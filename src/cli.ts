@@ -4,6 +4,9 @@
  * Cross-domain research hypothesis generation
  */
 
+// Load environment variables from .env file
+import 'dotenv/config';
+
 import { SynthesisOrchestrator } from './orchestrator/index.js';
 import { SUPPORTED_DOMAINS, DOMAIN_METADATA, DomainTag } from './types/index.js';
 
@@ -53,9 +56,15 @@ async function main(): Promise<void> {
 
   // Check API key
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.error('Error: ANTHROPIC_API_KEY environment variable not set.');
-    console.error('Please set your API key:');
-    console.error('  export ANTHROPIC_API_KEY=your-key-here');
+    console.error('Error: ANTHROPIC_API_KEY not found.');
+    console.error('');
+    console.error('Option 1: Create a .env file with:');
+    console.error('  ANTHROPIC_API_KEY=your-key-here');
+    console.error('');
+    console.error('Option 2: Set environment variable:');
+    console.error('  Windows (PowerShell): $env:ANTHROPIC_API_KEY="your-key-here"');
+    console.error('  Windows (CMD):        set ANTHROPIC_API_KEY=your-key-here');
+    console.error('  macOS/Linux:          export ANTHROPIC_API_KEY=your-key-here');
     process.exit(1);
   }
 

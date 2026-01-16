@@ -17,8 +17,16 @@ Synthesis Labs finds the research worth doing that humans wouldn't have thought 
 # Install dependencies
 npm install
 
-# Set your API key
-export ANTHROPIC_API_KEY=your-key-here
+# Set your API key (choose one method)
+
+# Option 1: Create .env file (recommended)
+cp .env.example .env
+# Edit .env and add your key: ANTHROPIC_API_KEY=sk-ant-...
+
+# Option 2: Environment variable
+# PowerShell: $env:ANTHROPIC_API_KEY="sk-ant-..."
+# CMD:        set ANTHROPIC_API_KEY=sk-ant-...
+# macOS/Linux: export ANTHROPIC_API_KEY=sk-ant-...
 
 # Run a synthesis
 npm run dev -- "How can we improve CRISPR guide RNA design?"
