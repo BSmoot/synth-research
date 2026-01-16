@@ -1,0 +1,196 @@
+# Synthesis Labs
+
+Cross-domain research hypothesis generation using AI agents.
+
+## Overview
+
+Synthesis Labs finds the research worth doing that humans wouldn't have thought to try. It works by:
+
+1. **Analyzing** a research domain to extract concepts, methods, and open problems
+2. **Cross-pollinating** to find analogous problems and methods in other domains
+3. **Synthesizing** novel research hypotheses from these connections
+4. **Validating** hypotheses for specificity, novelty, and feasibility
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Set your API key
+export ANTHROPIC_API_KEY=your-key-here
+
+# Run a synthesis
+npm run dev -- "How can we improve CRISPR guide RNA design?"
+```
+
+## Usage
+
+```bash
+# Basic usage
+synth "Your research question here"
+
+# Specify target domain
+synth "Question" --domain=computational-biology
+
+# Available domains
+# - computational-biology
+# - materials-science
+# - ml-ai
+```
+
+## Example Output
+
+```
+========================================
+  SYNTHESIS LABS
+  Cross-Domain Research Hypothesis Generation
+========================================
+
+Query: "How can we improve CRISPR guide RNA design?"
+Domain: Computational Biology
+
+SUMMARY:
+  Generated: 5 hypotheses
+  Validated: 3
+  Rejected: 2
+  Time: 45.2s
+
+PIPELINE STAGES:
+  ✓ domain-analysis: 8.3s
+  ✓ cross-pollination: 12.1s
+  ✓ hypothesis-synthesis: 15.4s
+  ✓ hypothesis-challenge: 9.4s
+
+----------------------------------------
+  VALIDATED HYPOTHESES
+----------------------------------------
+
+#1: Attention-Based CRISPR Off-Target Prediction
+Verdict: PASS (Score: 3.65)
+
+Statement: Transformer attention mechanisms can improve CRISPR
+off-target prediction accuracy by learning position-dependent
+nucleotide binding patterns.
+
+Scores:
+  Specificity: 4/5
+  Novelty: 3/5
+  Connection Validity: 4/5
+  Feasibility: 4/5
+  Grounding: 3/5
+...
+```
+
+## How It Works
+
+### Pipeline Architecture
+
+```
+User Query
+    │
+    ▼
+┌─────────────────┐
+│ Domain Analyst  │ → Extracts concepts, methods, problems
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Cross-Pollinator│ → Finds analogies in other domains
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Hypothesis      │ → Generates candidate hypotheses
+│ Synthesizer     │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Hypothesis      │ → Validates and scores hypotheses
+│ Challenger      │
+└─────────────────┘
+    │
+    ▼
+Ranked Output
+```
+
+### Hypothesis Quality Rubric
+
+Each hypothesis is scored on 5 dimensions:
+
+| Dimension | Weight | Description |
+|-----------|--------|-------------|
+| Specificity | 25% | Is it testable with clear variables? |
+| Novelty | 20% | Is it genuinely new? |
+| Connection Validity | 25% | Is the cross-domain analogy genuine? |
+| Feasibility | 15% | Can it be tested with reasonable resources? |
+| Grounding | 15% | Is there supporting evidence? |
+
+**Pass threshold**: Composite score ≥ 3.5, no dimension below 2
+
+## Project Structure
+
+```
+synth-research/
+├── src/
+│   ├── types/           # Type definitions (Zod schemas)
+│   ├── agents/          # Agent implementations
+│   ├── orchestrator/    # Pipeline coordination
+│   ├── context/         # Pipeline context management
+│   └── cli.ts           # Command-line interface
+├── tests/               # Test suites
+├── examples/            # Example runs
+├── docs/
+│   ├── architecture/    # ADRs
+│   └── specs/           # PRD, constraints
+└── .claude/
+    ├── agents/          # Agent specifications
+    └── context/         # Project context
+```
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Type check
+npm run lint
+
+# Run tests
+npm test
+
+# Build
+npm run build
+
+# Run in development
+npm run dev -- "Your query"
+```
+
+## Supported Domains
+
+| Domain | Key Areas |
+|--------|-----------|
+| **Computational Biology** | Genomics, proteomics, drug discovery, CRISPR, systems biology |
+| **Materials Science** | Nanomaterials, polymers, semiconductors, biomaterials |
+| **ML/AI** | Deep learning, reinforcement learning, NLP, computer vision |
+
+## Limitations
+
+- **Citation verification**: Citations marked as `llm-knowledge` should be independently verified
+- **Novelty checking**: The system cannot guarantee a hypothesis hasn't been published
+- **Domain coverage**: Currently limited to 3 domains
+- **No live experiments**: Generates hypotheses only, cannot execute research
+
+## Architecture Decisions
+
+See `docs/architecture/` for detailed ADRs:
+- ADR-001: System Overview
+- ADR-002: Agent Topology
+- ADR-003: Knowledge Representation
+- ADR-004: Hypothesis Scoring
+
+## License
+
+MIT
