@@ -5,6 +5,8 @@
 export * from './domains.js';
 export * from './connections.js';
 export * from './hypothesis.js';
+export * from './tokens.js';
+export * from './trace.js';
 
 // ============================================================================
 // User Query
@@ -48,6 +50,14 @@ export const SynthesisOutputSchema = z.object({
     totalRejected: z.number(),
     executionTimeMs: z.number(),
     stages: z.array(StageResultSchema),
+    tokenUsage: z.object({
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      totalTokens: z.number(),
+    }).optional(),
+    costEstimate: z.object({
+      usd: z.number(),
+    }).optional(),
   }),
 
   warnings: z.array(z.string()),

@@ -35,6 +35,15 @@ async function main(): Promise<void> {
     ? (domainArg.split('=')[1] as DomainTag)
     : undefined;
 
+  // Parse trace flags
+  const traceEnabled = args.includes('--trace');
+  const traceDirArg = args.find((a) => a.startsWith('--trace-dir='));
+  const traceDir = traceDirArg ? traceDirArg.split('=')[1] : './traces';
+
+  // Parse token budget flag
+  const maxTokensArg = args.find((a) => a.startsWith('--max-tokens='));
+  const maxTokenBudget = maxTokensArg ? parseInt(maxTokensArg.split('=')[1], 10) : undefined;
+
   // Get query (all non-flag arguments)
   const query = args
     .filter((a) => !a.startsWith('--'))
@@ -81,7 +90,11 @@ async function main(): Promise<void> {
   console.log('');
 
   try {
-    const orchestrator = new SynthesisOrchestrator();
+    const orchestrator = new SynthesisOrchestrator({
+      traceEnabled,
+      traceOutputDir: traceDir,
+      maxTokenBudget,
+    });
     const result = await orchestrator.run({
       text: query,
       targetDomain: domain,
@@ -107,9 +120,12 @@ USAGE:
   synth <query> [options]
 
 OPTIONS:
-  --domain=<domain>  Target domain for analysis
-  --help, -h         Show this help message
-  --version, -v      Show version
+  --domain=<domain>     Target domain for analysis
+  --trace               Enable detailed trace output
+  --trace-dir=<path>    Directory for trace files (default: ./traces)
+  --max-tokens=<num>    Maximum token budget for pipeline
+  --help, -h            Show this help message
+  --version, -v         Show version
 
 SUPPORTED DOMAINS:
   ${SUPPORTED_DOMAINS.map((d) => `${d}: ${DOMAIN_METADATA[d].name}`).join('\n  ')}
@@ -117,7 +133,7 @@ SUPPORTED DOMAINS:
 EXAMPLES:
   synth "How can we improve CRISPR guide RNA design?"
   synth "Applications of transformers in drug discovery" --domain=computational-biology
-  synth "Novel approaches to room-temperature superconductors"
+  synth "Novel approaches to room-temperature superconductors" --trace --max-tokens=50000
 
 ENVIRONMENT:
   ANTHROPIC_API_KEY  Required. Your Anthropic API key.
@@ -163,6 +179,14 @@ function printResults(result: {
     totalRejected: number;
     executionTimeMs: number;
     stages: Array<{ stage: string; status: string; durationMs: number }>;
+    tokenUsage?: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    };
+    costEstimate?: {
+      usd: number;
+    };
   };
   warnings: string[];
 }): void {
@@ -181,6 +205,18 @@ function printResults(result: {
   console.log(`  Rejected: ${result.metadata.totalRejected}`);
   console.log(`  Time: ${(result.metadata.executionTimeMs / 1000).toFixed(1)}s`);
   console.log('');
+
+  // Token usage (if available)
+  if (result.metadata.tokenUsage) {
+    console.log('TOKEN USAGE:');
+    console.log(`  Input tokens: ${result.metadata.tokenUsage.inputTokens.toLocaleString()}`);
+    console.log(`  Output tokens: ${result.metadata.tokenUsage.outputTokens.toLocaleString()}`);
+    console.log(`  Total tokens: ${result.metadata.tokenUsage.totalTokens.toLocaleString()}`);
+    if (result.metadata.costEstimate) {
+      console.log(`  Estimated cost: $${result.metadata.costEstimate.usd.toFixed(4)}`);
+    }
+    console.log('');
+  }
 
   // Stages
   console.log('PIPELINE STAGES:');

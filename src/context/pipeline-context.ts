@@ -12,6 +12,15 @@ import type {
   StageResult,
   DomainTag,
 } from '../types/index.js';
+import type {
+  TokenUsage,
+  AgentTokenUsage,
+  AccumulatedTokenUsage,
+  CostEstimate,
+  MODEL_PRICING,
+} from '../types/tokens.js';
+import type { TraceEntry } from '../types/trace.js';
+import type { TokenTracker, TraceCollector } from '../agents/base-agent.js';
 
 export interface ContextSummary {
   query: string;
@@ -27,7 +36,7 @@ export interface ContextSummary {
   }>;
 }
 
-export class PipelineContext {
+export class PipelineContext implements TokenTracker, TraceCollector {
   public readonly traceId: string;
   public readonly startTime: Date;
   public readonly query: UserQuery;
@@ -39,6 +48,8 @@ export class PipelineContext {
   private _scoredHypotheses: ScoredHypothesis[] = [];
   private _stages: StageResult[] = [];
   private _warnings: string[] = [];
+  private _tokenUsage: AgentTokenUsage[] = [];
+  private _traces: TraceEntry[] = [];
 
   constructor(query: UserQuery, domain: DomainTag) {
     this.traceId = randomUUID();
@@ -76,6 +87,27 @@ export class PipelineContext {
   }
 
   // ============================================================================
+  // Token Tracking (implements TokenTracker)
+  // ============================================================================
+
+  recordUsage(agent: string, model: string, usage: TokenUsage): void {
+    this._tokenUsage.push({
+      agent,
+      model,
+      usage,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // ============================================================================
+  // Trace Collection (implements TraceCollector)
+  // ============================================================================
+
+  recordTrace(entry: TraceEntry): void {
+    this._traces.push(entry);
+  }
+
+  // ============================================================================
   // Getters
   // ============================================================================
 
@@ -105,6 +137,78 @@ export class PipelineContext {
 
   get elapsedMs(): number {
     return Date.now() - this.startTime.getTime();
+  }
+
+  get tokenUsage(): AccumulatedTokenUsage {
+    const total = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    };
+
+    const byAgent: Record<string, { inputTokens: number; outputTokens: number; totalTokens: number }> = {};
+    const byModel: Record<string, { inputTokens: number; outputTokens: number; totalTokens: number }> = {};
+
+    for (const entry of this._tokenUsage) {
+      // Total accumulation
+      total.inputTokens += entry.usage.inputTokens;
+      total.outputTokens += entry.usage.outputTokens;
+      total.totalTokens += entry.usage.inputTokens + entry.usage.outputTokens;
+
+      // By agent
+      if (!byAgent[entry.agent]) {
+        byAgent[entry.agent] = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+      }
+      byAgent[entry.agent].inputTokens += entry.usage.inputTokens;
+      byAgent[entry.agent].outputTokens += entry.usage.outputTokens;
+      byAgent[entry.agent].totalTokens += entry.usage.inputTokens + entry.usage.outputTokens;
+
+      // By model
+      if (!byModel[entry.model]) {
+        byModel[entry.model] = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+      }
+      byModel[entry.model].inputTokens += entry.usage.inputTokens;
+      byModel[entry.model].outputTokens += entry.usage.outputTokens;
+      byModel[entry.model].totalTokens += entry.usage.inputTokens + entry.usage.outputTokens;
+    }
+
+    return {
+      total,
+      byAgent,
+      byModel,
+    };
+  }
+
+  get traces(): TraceEntry[] {
+    return this._traces;
+  }
+
+  calculateCost(): CostEstimate {
+    const usage = this.tokenUsage;
+    let totalUsd = 0;
+    const byModel: Record<string, number> = {};
+
+    // Import pricing data
+    const pricing: typeof MODEL_PRICING = {
+      'claude-sonnet-4-20250514': { inputPerMTok: 3, outputPerMTok: 15 },
+      'claude-opus-4-20250514': { inputPerMTok: 15, outputPerMTok: 75 },
+    };
+
+    for (const [model, tokens] of Object.entries(usage.byModel)) {
+      const modelPricing = pricing[model as keyof typeof pricing];
+      if (modelPricing) {
+        const inputCost = (tokens.inputTokens / 1_000_000) * modelPricing.inputPerMTok;
+        const outputCost = (tokens.outputTokens / 1_000_000) * modelPricing.outputPerMTok;
+        const modelTotal = inputCost + outputCost;
+        byModel[model] = modelTotal;
+        totalUsd += modelTotal;
+      }
+    }
+
+    return {
+      usd: totalUsd,
+      byModel,
+    };
   }
 
   // ============================================================================

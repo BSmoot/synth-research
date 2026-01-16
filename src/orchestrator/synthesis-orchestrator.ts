@@ -18,11 +18,23 @@ import {
   RankedHypothesis,
   SUPPORTED_DOMAINS,
 } from '../types/index.js';
+import { TraceWriter } from '../tracing/trace-writer.js';
+import type { TraceMetadata } from '../types/trace.js';
 
 export interface OrchestratorConfig {
   apiKey?: string;
   maxRetries?: number;
   timeoutMs?: number;
+  traceEnabled?: boolean;
+  traceOutputDir?: string;
+  maxTokenBudget?: number;
+}
+
+export class BudgetExceededError extends Error {
+  constructor(used: number, budget: number) {
+    super(`Token budget exceeded: ${used} tokens used, budget is ${budget}`);
+    this.name = 'BudgetExceededError';
+  }
 }
 
 export class SynthesisOrchestrator {
@@ -39,6 +51,8 @@ export class SynthesisOrchestrator {
     this.config = {
       maxRetries: 2,
       timeoutMs: 120000,
+      traceEnabled: false,
+      traceOutputDir: './traces',
       ...config,
     };
 
@@ -66,24 +80,52 @@ export class SynthesisOrchestrator {
     context.log(`Starting synthesis for: "${query.text}"`);
     context.log(`Target domain: ${domain}`);
 
+    // Configure agents with trackers
+    this.domainAnalyst.setTracker(context);
+    this.domainAnalyst.setTraceCollector(context);
+    this.crossPollinator.setTracker(context);
+    this.crossPollinator.setTraceCollector(context);
+    this.hypothesisSynthesizer.setTracker(context);
+    this.hypothesisSynthesizer.setTraceCollector(context);
+    this.hypothesisChallenger.setTracker(context);
+    this.hypothesisChallenger.setTraceCollector(context);
+
     try {
       // Stage 1: Domain Analysis
+      this.checkBudget(context);
       await this.runDomainAnalysis(context);
 
       // Stage 2: Cross-Pollination
+      this.checkBudget(context);
       await this.runCrossPollination(context);
 
       // Stage 3: Hypothesis Synthesis
+      this.checkBudget(context);
       await this.runHypothesisSynthesis(context);
 
       // Stage 4: Challenge & Score
+      this.checkBudget(context);
       await this.runHypothesisChallenge(context);
+
+      // Write traces if enabled
+      if (this.config.traceEnabled) {
+        await this.writeTraces(context);
+      }
 
       // Build output
       return this.buildOutput(context);
     } catch (error) {
       context.log(`Pipeline error: ${error}`);
       context.addWarning(`Pipeline failed: ${error}`);
+
+      // Write traces even on error
+      if (this.config.traceEnabled) {
+        try {
+          await this.writeTraces(context);
+        } catch (traceError) {
+          context.log(`Failed to write traces: ${traceError}`);
+        }
+      }
 
       // Return partial results if available
       return this.buildOutput(context);
@@ -283,6 +325,10 @@ export class SynthesisOrchestrator {
       context.hypotheses.length - context.scoredHypotheses.length +
       context.scoredHypotheses.filter((h) => h.verdict === 'fail').length;
 
+    // Get token usage and cost
+    const tokenUsage = context.tokenUsage;
+    const costEstimate = context.calculateCost();
+
     return {
       traceId: context.traceId,
       query: context.query.text,
@@ -296,10 +342,62 @@ export class SynthesisOrchestrator {
         totalRejected,
         executionTimeMs: context.elapsedMs,
         stages: context.stages,
+        tokenUsage: {
+          inputTokens: tokenUsage.total.inputTokens,
+          outputTokens: tokenUsage.total.outputTokens,
+          totalTokens: tokenUsage.total.totalTokens,
+        },
+        costEstimate: {
+          usd: costEstimate.usd,
+        },
       },
 
       warnings: context.warnings,
     };
+  }
+
+  /**
+   * Check token budget before proceeding
+   */
+  private checkBudget(context: PipelineContext): void {
+    if (!this.config.maxTokenBudget) {
+      return;
+    }
+
+    const usage = context.tokenUsage;
+    const currentTotal = usage.total.totalTokens;
+
+    if (currentTotal > this.config.maxTokenBudget) {
+      throw new BudgetExceededError(currentTotal, this.config.maxTokenBudget);
+    }
+  }
+
+  /**
+   * Write traces to disk
+   */
+  private async writeTraces(context: PipelineContext): Promise<void> {
+    const traceDir = this.config.traceOutputDir ?? './traces';
+    const writer = new TraceWriter(traceDir);
+
+    const usage = context.tokenUsage;
+    const cost = context.calculateCost();
+
+    const metadata: TraceMetadata = {
+      traceId: context.traceId,
+      query: context.query.text,
+      domain: context.domain,
+      startTime: context.startTime.toISOString(),
+      endTime: new Date().toISOString(),
+      totalTokens: {
+        inputTokens: usage.total.inputTokens,
+        outputTokens: usage.total.outputTokens,
+        totalTokens: usage.total.totalTokens,
+      },
+      costUsd: cost.usd,
+    };
+
+    await writer.writeTrace(context.traceId, metadata, context.traces);
+    context.log(`Traces written to: ${traceDir}/${context.traceId}`);
   }
 
   /**

@@ -3,6 +3,8 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import type { TokenUsage } from '../types/tokens.js';
+import type { TraceEntry } from '../types/trace.js';
 
 export interface AgentConfig {
   name: string;
@@ -11,13 +13,37 @@ export interface AgentConfig {
   temperature?: number;
 }
 
+export interface TokenTracker {
+  recordUsage(agent: string, model: string, usage: TokenUsage): void;
+}
+
+export interface TraceCollector {
+  recordTrace(entry: TraceEntry): void;
+}
+
 export abstract class BaseAgent<TInput, TOutput> {
   protected readonly client: Anthropic;
   protected readonly config: AgentConfig;
+  protected tracker?: TokenTracker;
+  protected traceCollector?: TraceCollector;
 
   constructor(client: Anthropic, config: AgentConfig) {
     this.client = client;
     this.config = config;
+  }
+
+  /**
+   * Set token tracker for this agent
+   */
+  setTracker(tracker: TokenTracker): void {
+    this.tracker = tracker;
+  }
+
+  /**
+   * Set trace collector for this agent
+   */
+  setTraceCollector(collector: TraceCollector): void {
+    this.traceCollector = collector;
   }
 
   /**
@@ -45,8 +71,15 @@ export abstract class BaseAgent<TInput, TOutput> {
    */
   protected async callLLM(
     systemPrompt: string,
-    userPrompt: string
+    userPrompt: string,
+    options?: {
+      tracker?: TokenTracker;
+      traceCollector?: TraceCollector;
+      agentName?: string;
+    }
   ): Promise<string> {
+    const startTime = Date.now();
+
     const response = await this.client.messages.create({
       model: this.config.model,
       max_tokens: this.config.maxTokens,
@@ -60,13 +93,52 @@ export abstract class BaseAgent<TInput, TOutput> {
       ],
     });
 
+    const durationMs = Date.now() - startTime;
+
     // Extract text from response
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
       throw new Error('No text response from LLM');
     }
 
-    return textContent.text;
+    const rawOutput = textContent.text;
+
+    // Capture token usage
+    const usage: TokenUsage = {
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    };
+
+    // Use provided trackers or fall back to instance trackers
+    const tracker = options?.tracker ?? this.tracker;
+    const traceCollector = options?.traceCollector ?? this.traceCollector;
+    const agentName = options?.agentName ?? this.config.name;
+
+    // Report to tracker
+    if (tracker) {
+      tracker.recordUsage(agentName, this.config.model, usage);
+    }
+
+    // Report to trace collector
+    if (traceCollector) {
+      traceCollector.recordTrace({
+        stage: agentName,
+        agent: agentName,
+        model: this.config.model,
+        timestamp: new Date().toISOString(),
+        input: {
+          system: systemPrompt,
+          user: userPrompt,
+        },
+        output: {
+          raw: rawOutput,
+        },
+        usage,
+        durationMs,
+      });
+    }
+
+    return rawOutput;
   }
 
   /**
