@@ -1,0 +1,183 @@
+{
+  "name": "@synthesis-labs/synthesis",
+  "version": "1.0.0",
+  "description": "Cross-domain research hypothesis generation team",
+  "domain": "research-hypothesis-generation",
+
+  "interface": {
+    "agent": "synthesis-orchestrator",
+    "protocol": "sequential-pipeline",
+    "accepts": ["user-query"],
+    "produces": ["hypothesis-output"]
+  },
+
+  "agents": {
+    "mandatory": [
+      {
+        "role": "orchestrator",
+        "agent": "synthesis-orchestrator",
+        "model": "opus",
+        "mode": "foreground"
+      }
+    ],
+    "specialists": [
+      {
+        "role": "domain-analyst",
+        "agent": "domain-analyst",
+        "model": "sonnet",
+        "mode": "background",
+        "order": 1
+      },
+      {
+        "role": "cross-pollinator",
+        "agent": "cross-pollinator",
+        "model": "opus",
+        "mode": "background",
+        "order": 2
+      },
+      {
+        "role": "hypothesis-synthesizer",
+        "agent": "hypothesis-synthesizer",
+        "model": "opus",
+        "mode": "background",
+        "order": 3
+      },
+      {
+        "role": "hypothesis-challenger",
+        "agent": "hypothesis-challenger",
+        "model": "opus",
+        "mode": "foreground",
+        "order": 4
+      },
+      {
+        "role": "evidence-gatherer",
+        "agent": "evidence-gatherer",
+        "model": "sonnet",
+        "mode": "background",
+        "order": 5,
+        "optional": true
+      }
+    ]
+  },
+
+  "workflow": {
+    "pattern": "sequential-pipeline",
+    "stages": [
+      {
+        "name": "domain-analysis",
+        "agent": "domain-analyst",
+        "input": "user-query",
+        "output": "domain-analysis"
+      },
+      {
+        "name": "cross-pollination",
+        "agent": "cross-pollinator",
+        "input": "domain-analysis",
+        "output": "cross-domain-connections"
+      },
+      {
+        "name": "hypothesis-synthesis",
+        "agent": "hypothesis-synthesizer",
+        "input": "cross-domain-connections",
+        "output": "raw-hypotheses"
+      },
+      {
+        "name": "hypothesis-challenge",
+        "agent": "hypothesis-challenger",
+        "input": "raw-hypotheses",
+        "output": "scored-hypotheses"
+      },
+      {
+        "name": "evidence-gathering",
+        "agent": "evidence-gatherer",
+        "input": "scored-hypotheses",
+        "output": "evidenced-hypotheses",
+        "optional": true
+      }
+    ]
+  },
+
+  "handoffs": {
+    "internal": [
+      {
+        "from": "domain-analyst",
+        "to": "cross-pollinator",
+        "type": "domain-analysis",
+        "schema": "DomainAnalysis"
+      },
+      {
+        "from": "cross-pollinator",
+        "to": "hypothesis-synthesizer",
+        "type": "cross-domain-connections",
+        "schema": "CrossPollinationResult"
+      },
+      {
+        "from": "hypothesis-synthesizer",
+        "to": "hypothesis-challenger",
+        "type": "raw-hypotheses",
+        "schema": "SynthesisResult"
+      },
+      {
+        "from": "hypothesis-challenger",
+        "to": "evidence-gatherer",
+        "type": "scored-hypotheses",
+        "schema": "ChallengeResult"
+      }
+    ],
+    "external": [
+      {
+        "type": "user-query",
+        "direction": "inbound",
+        "schema": "UserQuery"
+      },
+      {
+        "type": "hypothesis-output",
+        "direction": "outbound",
+        "schema": "SynthesisOutput"
+      }
+    ]
+  },
+
+  "domains": {
+    "supported": [
+      {
+        "tag": "computational-biology",
+        "subDomains": ["genomics", "proteomics", "drug-discovery", "crispr", "systems-biology"]
+      },
+      {
+        "tag": "materials-science",
+        "subDomains": ["nanomaterials", "polymers", "semiconductors", "biomaterials", "composites"]
+      },
+      {
+        "tag": "ml-ai",
+        "subDomains": ["deep-learning", "reinforcement-learning", "nlp", "computer-vision", "optimization"]
+      }
+    ]
+  },
+
+  "qualityRubric": {
+    "dimensions": [
+      { "name": "specificity", "weight": 0.25 },
+      { "name": "novelty", "weight": 0.20 },
+      { "name": "connectionValidity", "weight": 0.25 },
+      { "name": "feasibility", "weight": 0.15 },
+      { "name": "grounding", "weight": 0.15 }
+    ],
+    "thresholds": {
+      "hardFloor": 2,
+      "passThreshold": 3.5,
+      "borderlineRange": [3.0, 3.5]
+    }
+  },
+
+  "successCriteria": {
+    "intentAccuracy": { "target": 0.95 },
+    "contextHealth": { "target": 1.0 },
+    "specAlignment": { "target": 1.0, "maxConflicts": 0 },
+    "executionFidelity": { "target": 1.0 },
+    "hypothesisQuality": {
+      "minPassRate": 0.3,
+      "minAverageScore": 3.0
+    }
+  }
+}
