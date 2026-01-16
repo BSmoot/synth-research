@@ -205,7 +205,82 @@ MVP requires minimum 1 verifiable citation per hypothesis.
 
 ---
 
+### [DECISION-008] Hub-and-Spoke Agent Topology
+
+**Date**: 2026-01-16
+**Status**: Accepted
+
+**Context**:
+Need to define how agents communicate with each other.
+
+**Decision**:
+Hub-and-spoke topology with orchestrator as central hub:
+- All agents communicate only through orchestrator
+- Typed handoffs between stages
+- Sequential pipeline execution for MVP
+
+**Rationale**:
+- Simpler than mesh topology
+- Centralized error handling
+- Easy to add/remove agents
+
+**Consequences**:
+- Orchestrator is single point of failure
+- No parallel agent execution in v1
+- Clear data flow for debugging
+
+---
+
+### [DECISION-009] In-Memory Context Management
+
+**Date**: 2026-01-16
+**Status**: Accepted
+
+**Context**:
+Need to manage shared state across pipeline stages.
+
+**Decision**:
+Use in-memory PipelineContext class:
+- Orchestrator maintains context object
+- Agents receive relevant context slices
+- No persistence between runs
+
+**Rationale**:
+- Simplest implementation for MVP
+- Avoids file I/O complexity
+- Fits single-session use case
+
+**Consequences**:
+- No session resumption
+- Context lost on crash
+- Must fit in Node.js memory
+
+---
+
+### [DECISION-010] Zod for Runtime Schema Validation
+
+**Date**: 2026-01-16
+**Status**: Accepted
+
+**Context**:
+LLM outputs need runtime validation beyond TypeScript compile-time checks.
+
+**Decision**:
+Use Zod library for runtime validation of all LLM-generated structures.
+
+**Rationale**:
+- TypeScript types only checked at compile time
+- LLM may generate malformed JSON
+- Zod provides clear error messages
+
+**Consequences**:
+- Additional dependency
+- Must define schemas twice (types + Zod)
+- Clear validation errors for debugging
+
+---
+
 ## Pending Decisions
 
-- [ ] Agent topology (parallel vs sequential for cross-domain search)
-- [ ] Error recovery strategy for API failures
+- [ ] Error recovery strategy for API failures (retry count, backoff)
+- [ ] Context pruning strategy when approaching token limits
