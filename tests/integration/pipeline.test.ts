@@ -151,7 +151,15 @@ describe('Domain Metadata', () => {
     expect(SUPPORTED_DOMAINS).toContain('computational-biology');
     expect(SUPPORTED_DOMAINS).toContain('materials-science');
     expect(SUPPORTED_DOMAINS).toContain('ml-ai');
-    expect(SUPPORTED_DOMAINS).toHaveLength(3);
+    expect(SUPPORTED_DOMAINS).toContain('economics-finance');
+    expect(SUPPORTED_DOMAINS).toContain('social-systems');
+    expect(SUPPORTED_DOMAINS).toContain('physics-engineering');
+    expect(SUPPORTED_DOMAINS).toContain('climate-environment');
+    expect(SUPPORTED_DOMAINS).toContain('healthcare-medicine');
+    expect(SUPPORTED_DOMAINS).toContain('cognitive-science');
+    expect(SUPPORTED_DOMAINS).toContain('information-systems');
+    expect(SUPPORTED_DOMAINS).toContain('other');
+    expect(SUPPORTED_DOMAINS).toHaveLength(11);
   });
 
   it('should have metadata for each domain', () => {

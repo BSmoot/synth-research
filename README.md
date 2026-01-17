@@ -249,7 +249,7 @@ npm run dev -- "Your query"
 
 ## Limitations
 
-- **Citation verification**: Citations marked as `llm-knowledge` should be independently verified
+- **Citation verification**: Citations marked as `llm-knowledge` should be independently verified. Automated citation verification is planned for v1.1.
 - **Novelty checking**: The system cannot guarantee a hypothesis hasn't been published
 - **Domain coverage**: Currently limited to 3 domains
 - **No live experiments**: Generates hypotheses only, cannot execute research

@@ -52,7 +52,7 @@ Implement a **pipeline architecture with orchestrator coordination**:
 │  │        ▼              ▼              ▼                       │   │
 │  │   ┌──────────┐   ┌──────────┐                               │   │
 │  │   │HYPOTHESIS│   │ EVIDENCE │                               │   │
-│  │   │CHALLENGER│   │ GATHERER │  (optional)                   │   │
+│  │   │CHALLENGER│   │ GATHERER │  (optional, v1.1)             │   │
 │  │   └──────────┘   └──────────┘                               │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                │                                     │
@@ -74,7 +74,7 @@ Implement a **pipeline architecture with orchestrator coordination**:
 | **cross-pollinator** | Find analogies across domains | DomainAnalysis | CrossDomainConnections |
 | **hypothesis-synthesizer** | Generate candidate hypotheses | Connections | RawHypotheses |
 | **hypothesis-challenger** | Validate and score hypotheses | RawHypotheses | ScoredHypotheses |
-| **evidence-gatherer** | Find supporting citations | Hypotheses | EvidencedHypotheses |
+| **evidence-gatherer** | Find supporting citations (v1.1) | Hypotheses | EvidencedHypotheses |
 
 ### Data Flow
 

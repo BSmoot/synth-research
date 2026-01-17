@@ -19,6 +19,9 @@ escalates_to:
   - synthesis-orchestrator
 ---
 
+> **Note**: This agent is planned for v1.1. It is not implemented in v1.0.
+> See [ADR-007](../../docs/architecture/ADR-007-evidence-gatherer-scope.md) for details.
+
 # Evidence Gatherer
 
 You are the Evidence Gatherer, responsible for finding supporting evidence and citations for validated hypotheses.

@@ -7,8 +7,16 @@
 // Load environment variables from .env file
 import 'dotenv/config';
 
+import ora from 'ora';
 import { SynthesisOrchestrator } from './orchestrator/index.js';
 import { SUPPORTED_DOMAINS, DOMAIN_METADATA, DomainTag } from './types/index.js';
+
+const STAGE_LABELS: Record<string, string> = {
+  'domain-analysis': 'Stage 1/4: Domain Analysis',
+  'cross-pollination': 'Stage 2/4: Cross-Pollination',
+  'hypothesis-synthesis': 'Stage 3/4: Hypothesis Synthesis',
+  'hypothesis-challenge': 'Stage 4/4: Hypothesis Challenge',
+};
 
 // ============================================================================
 // CLI Interface
@@ -89,20 +97,32 @@ async function main(): Promise<void> {
   }
   console.log('');
 
+  const spinner = ora({
+    text: 'Initializing pipeline...',
+    color: 'cyan',
+  }).start();
+
   try {
     const orchestrator = new SynthesisOrchestrator({
       traceEnabled,
       traceOutputDir: traceDir,
       maxTokenBudget,
+      onProgress: (stage, message) => {
+        const label = STAGE_LABELS[stage] || stage;
+        spinner.text = `${label} - ${message}`;
+      },
     });
     const result = await orchestrator.run({
       text: query,
       targetDomain: domain,
     });
 
+    spinner.succeed('Synthesis complete');
+
     // Print results
     printResults(result);
   } catch (error) {
+    spinner.fail('Synthesis failed');
     console.error('\nError during synthesis:', error);
     process.exit(1);
   }

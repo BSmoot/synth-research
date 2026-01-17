@@ -1,6 +1,6 @@
 # ADR-005: Timeout and Circuit Breaker Strategy
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-01-17
 
 ---

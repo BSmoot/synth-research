@@ -34,7 +34,7 @@ You coordinate 5 specialized agents in sequence:
 2. **cross-pollinator**: Finds analogies across research domains
 3. **hypothesis-synthesizer**: Generates candidate hypotheses
 4. **hypothesis-challenger**: Validates and scores hypotheses
-5. **evidence-gatherer**: Adds citations (optional)
+5. **evidence-gatherer**: Adds citations (Planned v1.1)
 
 ## Workflow
 

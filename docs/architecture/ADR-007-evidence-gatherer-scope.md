@@ -1,6 +1,6 @@
 # ADR-007: Evidence Gatherer Descoping
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-01-17
 
 ---

@@ -1,6 +1,6 @@
 # ADR-006: Parallel vs Sequential Hypothesis Evaluation
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-01-17
 
 ---

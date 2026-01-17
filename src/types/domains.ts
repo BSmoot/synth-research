@@ -12,6 +12,14 @@ export const DomainTagSchema = z.enum([
   'computational-biology',
   'materials-science',
   'ml-ai',
+  'economics-finance',
+  'social-systems',
+  'physics-engineering',
+  'climate-environment',
+  'healthcare-medicine',
+  'cognitive-science',
+  'information-systems',
+  'other',
 ]);
 
 export type DomainTag = z.infer<typeof DomainTagSchema>;
@@ -20,6 +28,14 @@ export const SUPPORTED_DOMAINS: DomainTag[] = [
   'computational-biology',
   'materials-science',
   'ml-ai',
+  'economics-finance',
+  'social-systems',
+  'physics-engineering',
+  'climate-environment',
+  'healthcare-medicine',
+  'cognitive-science',
+  'information-systems',
+  'other',
 ];
 
 // ============================================================================
@@ -81,6 +97,148 @@ export const DOMAIN_METADATA: Record<DomainTag, DomainMetadata> = {
     ],
     keyJournals: ['JMLR', 'Nature Machine Intelligence'],
     majorConferences: ['NeurIPS', 'ICML', 'ICLR'],
+  },
+  'economics-finance': {
+    tag: 'economics-finance',
+    name: 'Economics & Finance',
+    description: 'Economic systems, financial markets, and monetary policy',
+    subDomains: [
+      'macroeconomics',
+      'microeconomics',
+      'financial-markets',
+      'behavioral-economics',
+      'econometrics',
+    ],
+    keyJournals: [
+      'American Economic Review',
+      'Journal of Finance',
+      'Econometrica',
+    ],
+    majorConferences: ['AEA', 'NBER', 'WFA'],
+  },
+  'social-systems': {
+    tag: 'social-systems',
+    name: 'Social Systems',
+    description: 'Social structures, governance, and institutional dynamics',
+    subDomains: [
+      'sociology',
+      'political-science',
+      'public-policy',
+      'urban-systems',
+      'organizational-behavior',
+    ],
+    keyJournals: [
+      'American Sociological Review',
+      'American Political Science Review',
+      'Social Forces',
+    ],
+    majorConferences: ['ASA', 'APSA', 'ICA'],
+  },
+  'physics-engineering': {
+    tag: 'physics-engineering',
+    name: 'Physics & Engineering',
+    description: 'Physical principles and engineering applications',
+    subDomains: [
+      'quantum-mechanics',
+      'thermodynamics',
+      'mechanical-engineering',
+      'electrical-engineering',
+      'aerospace',
+    ],
+    keyJournals: [
+      'Physical Review Letters',
+      'Nature Physics',
+      'IEEE Transactions',
+    ],
+    majorConferences: ['APS', 'IEEE', 'ASME'],
+  },
+  'climate-environment': {
+    tag: 'climate-environment',
+    name: 'Climate & Environment',
+    description: 'Climate systems, environmental science, and sustainability',
+    subDomains: [
+      'climate-modeling',
+      'ecology',
+      'environmental-policy',
+      'renewable-energy',
+      'carbon-systems',
+    ],
+    keyJournals: [
+      'Nature Climate Change',
+      'Environmental Science & Technology',
+      'Global Change Biology',
+    ],
+    majorConferences: ['AGU', 'EGU', 'UNFCCC COP'],
+  },
+  'healthcare-medicine': {
+    tag: 'healthcare-medicine',
+    name: 'Healthcare & Medicine',
+    description: 'Medical practice, healthcare systems, and clinical research',
+    subDomains: [
+      'clinical-medicine',
+      'epidemiology',
+      'healthcare-systems',
+      'diagnostics',
+      'therapeutics',
+    ],
+    keyJournals: [
+      'New England Journal of Medicine',
+      'The Lancet',
+      'JAMA',
+    ],
+    majorConferences: ['ASCO', 'ACC', 'IDWeek'],
+  },
+  'cognitive-science': {
+    tag: 'cognitive-science',
+    name: 'Cognitive Science',
+    description: 'Cognition, neuroscience, and psychological processes',
+    subDomains: [
+      'neuroscience',
+      'psychology',
+      'cognitive-neuroscience',
+      'behavioral-science',
+      'consciousness-studies',
+    ],
+    keyJournals: [
+      'Nature Neuroscience',
+      'Psychological Science',
+      'Cognitive Science',
+    ],
+    majorConferences: ['SfN', 'CogSci', 'APS'],
+  },
+  'information-systems': {
+    tag: 'information-systems',
+    name: 'Information Systems',
+    description: 'Computing systems, software, and information technology',
+    subDomains: [
+      'databases',
+      'cybersecurity',
+      'software-engineering',
+      'distributed-systems',
+      'human-computer-interaction',
+    ],
+    keyJournals: [
+      'ACM Transactions on Information Systems',
+      'IEEE Transactions on Software Engineering',
+      'Information Systems Research',
+    ],
+    majorConferences: ['SIGMOD', 'ICSE', 'CHI'],
+  },
+  'other': {
+    tag: 'other',
+    name: 'Other / Interdisciplinary',
+    description: 'Interdisciplinary or uncategorized research areas',
+    subDomains: [
+      'interdisciplinary',
+      'general-science',
+      'emerging-fields',
+    ],
+    keyJournals: [
+      'Science',
+      'Nature',
+      'PNAS',
+    ],
+    majorConferences: ['AAAS', 'Interdisciplinary'],
   },
 };
 
