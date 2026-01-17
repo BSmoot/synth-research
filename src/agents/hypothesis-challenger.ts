@@ -108,17 +108,17 @@ export class HypothesisChallengerAgent extends BaseAgent<
     super(client, { ...DEFAULT_CONFIG, ...config });
   }
 
-  async execute(input: ChallengeRequest): Promise<ChallengeResult> {
+  async execute(input: ChallengeRequest, signal?: AbortSignal): Promise<ChallengeResult> {
     const config = this.getParallelConfig(
       input.hypotheses.length,
       input.parallelConfig
     );
 
     if (config.mode === 'single') {
-      return this.evaluateSingle(input.hypotheses);
+      return this.evaluateSingle(input.hypotheses, signal);
     }
 
-    return this.evaluateParallel(input.hypotheses, config);
+    return this.evaluateParallel(input.hypotheses, config, signal);
   }
 
   // ============================================================================
@@ -151,15 +151,15 @@ export class HypothesisChallengerAgent extends BaseAgent<
     return batches;
   }
 
-  private async evaluateSingle(hypotheses: Hypothesis[]): Promise<ChallengeResult> {
+  private async evaluateSingle(hypotheses: Hypothesis[], signal?: AbortSignal): Promise<ChallengeResult> {
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt({ hypotheses });
-    const response = await this.callLLM(systemPrompt, userPrompt);
+    const response = await this.callLLM(systemPrompt, userPrompt, { signal });
     return this.parseResponse(response);
   }
 
-  private async evaluateBatch(hypotheses: Hypothesis[]): Promise<BatchResult> {
-    const result = await this.evaluateSingle(hypotheses);
+  private async evaluateBatch(hypotheses: Hypothesis[], signal?: AbortSignal): Promise<BatchResult> {
+    const result = await this.evaluateSingle(hypotheses, signal);
     return {
       scoredHypotheses: result.scoredHypotheses,
       rejected: result.rejected,
@@ -168,7 +168,8 @@ export class HypothesisChallengerAgent extends BaseAgent<
 
   private async evaluateParallel(
     hypotheses: Hypothesis[],
-    config: Required<ParallelConfig>
+    config: Required<ParallelConfig>,
+    signal?: AbortSignal
   ): Promise<ChallengeResult> {
     const batches = this.createBatches(hypotheses, config.batchSize);
     const results: BatchResult[] = [];
@@ -179,7 +180,7 @@ export class HypothesisChallengerAgent extends BaseAgent<
       config.maxConcurrent,
       async ({ batch, index }) => {
         try {
-          const result = await this.evaluateBatch(batch);
+          const result = await this.evaluateBatch(batch, signal);
           results.push(result);
         } catch (error) {
           errors.push({

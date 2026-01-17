@@ -34,11 +34,11 @@ export class CrossPollinatorAgent extends BaseAgent<
     super(client, { ...DEFAULT_CONFIG, ...config });
   }
 
-  async execute(input: PollinationRequest): Promise<CrossPollinationResult> {
+  async execute(input: PollinationRequest, signal?: AbortSignal): Promise<CrossPollinationResult> {
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt(input);
 
-    const response = await this.callLLM(systemPrompt, userPrompt);
+    const response = await this.callLLM(systemPrompt, userPrompt, { signal });
     return this.parseResponse(response);
   }
 

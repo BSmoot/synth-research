@@ -7,6 +7,7 @@ export * from './connections.js';
 export * from './hypothesis.js';
 export * from './tokens.js';
 export * from './trace.js';
+export * from './errors.js';
 
 // ============================================================================
 // User Query

@@ -12,6 +12,93 @@ import {
   DOMAIN_METADATA,
 } from '../types/index.js';
 
+const DOMAIN_ALIASES: Record<string, DomainTag> = {
+  // ml-ai variations
+  'ml-ai': 'ml-ai',
+  'machine-learning': 'ml-ai',
+  'machine learning': 'ml-ai',
+  'machine-learning-ai': 'ml-ai',
+  'ml': 'ml-ai',
+  'ai': 'ml-ai',
+  'artificial-intelligence': 'ml-ai',
+  'artificial intelligence': 'ml-ai',
+
+  // computational-biology variations
+  'computational-biology': 'computational-biology',
+  'computational biology': 'computational-biology',
+  'comp-bio': 'computational-biology',
+  'compbio': 'computational-biology',
+  'bioinformatics': 'computational-biology',
+
+  // materials-science variations
+  'materials-science': 'materials-science',
+  'materials science': 'materials-science',
+  'material-science': 'materials-science',
+  'material science': 'materials-science',
+  'matsci': 'materials-science',
+
+  // economics-finance variations
+  'economics-finance': 'economics-finance',
+  'economics': 'economics-finance',
+  'finance': 'economics-finance',
+  'econ': 'economics-finance',
+  'financial': 'economics-finance',
+  'economic': 'economics-finance',
+  'markets': 'economics-finance',
+
+  // social-systems variations
+  'social-systems': 'social-systems',
+  'social': 'social-systems',
+  'sociology': 'social-systems',
+  'social-science': 'social-systems',
+  'governance': 'social-systems',
+  'policy': 'social-systems',
+
+  // physics-engineering variations
+  'physics-engineering': 'physics-engineering',
+  'physics': 'physics-engineering',
+  'engineering': 'physics-engineering',
+  'mechanical': 'physics-engineering',
+  'electrical': 'physics-engineering',
+
+  // climate-environment variations
+  'climate-environment': 'climate-environment',
+  'climate': 'climate-environment',
+  'environment': 'climate-environment',
+  'environmental': 'climate-environment',
+  'ecology': 'climate-environment',
+  'sustainability': 'climate-environment',
+
+  // healthcare-medicine variations
+  'healthcare-medicine': 'healthcare-medicine',
+  'healthcare': 'healthcare-medicine',
+  'medicine': 'healthcare-medicine',
+  'medical': 'healthcare-medicine',
+  'health': 'healthcare-medicine',
+  'clinical': 'healthcare-medicine',
+
+  // cognitive-science variations
+  'cognitive-science': 'cognitive-science',
+  'cognitive': 'cognitive-science',
+  'neuroscience': 'cognitive-science',
+  'psychology': 'cognitive-science',
+  'cognition': 'cognitive-science',
+  'brain': 'cognitive-science',
+
+  // information-systems variations
+  'information-systems': 'information-systems',
+  'information': 'information-systems',
+  'computing': 'information-systems',
+  'informatics': 'information-systems',
+  'software': 'information-systems',
+
+  // other variations
+  'other': 'other',
+  'general': 'other',
+  'interdisciplinary': 'other',
+  'misc': 'other',
+};
+
 export interface DomainAnalysisRequest {
   query: string;
   domain: DomainTag;
@@ -29,15 +116,18 @@ export class DomainAnalystAgent extends BaseAgent<
   DomainAnalysisRequest,
   DomainAnalysis
 > {
+  private currentInputDomain?: DomainTag;
+
   constructor(client: Anthropic, config: Partial<AgentConfig> = {}) {
     super(client, { ...DEFAULT_CONFIG, ...config });
   }
 
-  async execute(input: DomainAnalysisRequest): Promise<DomainAnalysis> {
+  async execute(input: DomainAnalysisRequest, signal?: AbortSignal): Promise<DomainAnalysis> {
+    this.currentInputDomain = input.domain;
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt(input);
 
-    const response = await this.callLLM(systemPrompt, userPrompt);
+    const response = await this.callLLM(systemPrompt, userPrompt, { signal });
     return this.parseResponse(response);
   }
 
@@ -51,31 +141,66 @@ Your task is to analyze a research query and extract:
 4. Key Insights: Important observations about the domain (3-5)
 5. Research Frontiers: Active areas of investigation (2-4)
 
-For each concept, provide:
-- Unique ID (use format "c1", "c2", etc.)
-- Name
-- Description
-- Type (method, phenomenon, problem, tool, theory, metric)
-- Related concepts (names)
-- At least one source (can be "llm-knowledge" if from your training)
-
-IMPORTANT:
-- Be specific to the query, not generic domain overview
+CRITICAL INSTRUCTIONS:
+- CRITICAL: keyInsights and researchFrontiers MUST be arrays of plain strings, NOT objects
+- CRITICAL: Every concept, method, and openProblem MUST include the 'domain' field
+- CRITICAL: sources MUST be an array of Citation objects, NOT strings
+- Be specific to the query, not a generic domain overview
 - Include at least 3 open problems
 - Do not fabricate paper citations - use "llm-knowledge" type if unsure
 - Focus on concepts relevant to potential cross-domain synthesis
 
-Respond with ONLY valid JSON matching this structure:
+DOMAIN ENUM VALUES (use exactly as shown):
+- "computational-biology"
+- "materials-science"
+- "ml-ai"
+- "economics-finance"
+- "social-systems"
+- "physics-engineering"
+- "climate-environment"
+- "healthcare-medicine"
+- "cognitive-science"
+- "information-systems"
+- "other"
+
+CONCEPT TYPE ENUM VALUES:
+- "method", "phenomenon", "problem", "tool", "theory", "metric"
+
+CITATION TYPE ENUM VALUES:
+- "paper", "preprint", "book", "website", "llm-knowledge"
+
+EXACT JSON STRUCTURE:
 {
-  "domain": "domain-tag",
-  "query": "the query",
-  "concepts": [...],
-  "methods": [...],
-  "openProblems": [...],
-  "keyInsights": [...],
-  "researchFrontiers": [...],
-  "analyzedAt": "ISO date string"
-}`;
+  "domain": "ml-ai",
+  "query": "the research query string",
+  "concepts": [
+    {
+      "id": "c1",
+      "name": "Concept Name",
+      "domain": "ml-ai",
+      "subDomain": "optional-subdomain",
+      "description": "Detailed description",
+      "type": "theory",
+      "relatedConcepts": ["Concept 2", "Concept 3"],
+      "sources": [
+        {
+          "id": "src1",
+          "type": "llm-knowledge",
+          "title": "Source title",
+          "relevance": "Why relevant",
+          "verified": false
+        }
+      ]
+    }
+  ],
+  "methods": [],
+  "openProblems": [],
+  "keyInsights": ["Plain string insight 1", "Plain string insight 2"],
+  "researchFrontiers": ["Plain string frontier 1"],
+  "analyzedAt": "2025-01-16T12:00:00.000Z"
+}
+
+Respond with ONLY valid JSON matching the structure above.`;
   }
 
   protected buildUserPrompt(input: DomainAnalysisRequest): string {
@@ -100,15 +225,136 @@ Remember to output ONLY valid JSON.`;
   }
 
   protected parseResponse(response: string): DomainAnalysis {
+    // Step 1: Extract and parse JSON
     const json = this.extractJSON(response);
     const parsed = JSON.parse(json);
 
-    // Ensure analyzedAt is present
+    // Step 2: Normalize top-level domain
+    const inputDomain = this.currentInputDomain ?? 'ml-ai';
+    const normalizedDomain = this.normalizeDomain(parsed.domain, inputDomain);
+    parsed.domain = normalizedDomain;
+
+    // Step 3-5: Normalize concepts, methods, openProblems arrays
+    if (Array.isArray(parsed.concepts)) {
+      parsed.concepts = parsed.concepts.map((item: unknown) =>
+        this.normalizeConcept(item, normalizedDomain)
+      );
+    }
+    if (Array.isArray(parsed.methods)) {
+      parsed.methods = parsed.methods.map((item: unknown) =>
+        this.normalizeConcept(item, normalizedDomain)
+      );
+    }
+    if (Array.isArray(parsed.openProblems)) {
+      parsed.openProblems = parsed.openProblems.map((item: unknown) =>
+        this.normalizeConcept(item, normalizedDomain)
+      );
+    }
+
+    // Step 6-7: Normalize keyInsights and researchFrontiers
+    if (Array.isArray(parsed.keyInsights)) {
+      parsed.keyInsights = this.flattenToStrings(parsed.keyInsights);
+    }
+    if (Array.isArray(parsed.researchFrontiers)) {
+      parsed.researchFrontiers = this.flattenToStrings(parsed.researchFrontiers);
+    }
+
+    // Step 8: Ensure analyzedAt
     if (!parsed.analyzedAt) {
       parsed.analyzedAt = new Date().toISOString();
     }
 
-    // Validate with Zod
+    // Step 9: Validate with Zod
     return DomainAnalysisSchema.parse(parsed);
+  }
+
+  private normalizeDomain(domain: unknown, fallback: DomainTag): DomainTag {
+    if (!domain || typeof domain !== 'string') return fallback;
+    const lower = domain.toLowerCase();
+    if (lower in DOMAIN_ALIASES) return DOMAIN_ALIASES[lower];
+    if (domain in DOMAIN_ALIASES) return DOMAIN_ALIASES[domain];
+    const validTags = [
+      'computational-biology',
+      'materials-science',
+      'ml-ai',
+      'economics-finance',
+      'social-systems',
+      'physics-engineering',
+      'climate-environment',
+      'healthcare-medicine',
+      'cognitive-science',
+      'information-systems',
+      'other',
+    ];
+    return validTags.includes(domain) ? (domain as DomainTag) : fallback;
+  }
+
+  private normalizeConcept(item: unknown, fallbackDomain: DomainTag): unknown {
+    if (!item || typeof item !== 'object') return item;
+    const obj = item as Record<string, unknown>;
+
+    // Inject/normalize domain
+    if (!obj.domain) {
+      obj.domain = fallbackDomain;
+    } else {
+      obj.domain = this.normalizeDomain(obj.domain, fallbackDomain);
+    }
+
+    // Normalize sources
+    if (Array.isArray(obj.sources)) {
+      obj.sources = obj.sources.map((src, idx) => this.normalizeSource(src, idx));
+    }
+    return obj;
+  }
+
+  private normalizeSource(source: unknown, index: number): Record<string, unknown> {
+    if (typeof source === 'string') {
+      return {
+        id: `src-${index}`,
+        type: 'llm-knowledge',
+        title: source,
+        relevance: 'From LLM knowledge',
+        verified: false,
+      };
+    }
+    if (source && typeof source === 'object') {
+      const obj = source as Record<string, unknown>;
+      const result: Record<string, unknown> = {
+        id: obj.id ?? `src-${index}`,
+        type: obj.type ?? 'llm-knowledge',
+        title: obj.title ?? 'Unknown source',
+        relevance: obj.relevance ?? 'Unspecified',
+        verified: obj.verified ?? false,
+      };
+
+      // Conditionally add optional fields
+      if (obj.authors) result.authors = obj.authors;
+      if (obj.year) result.year = obj.year;
+      if (obj.venue) result.venue = obj.venue;
+      if (obj.url) result.url = obj.url;
+      if (obj.doi) result.doi = obj.doi;
+
+      return result;
+    }
+    return {
+      id: `src-${index}`,
+      type: 'llm-knowledge',
+      title: String(source),
+      relevance: 'From LLM knowledge',
+      verified: false,
+    };
+  }
+
+  private flattenToStrings(items: unknown[]): string[] {
+    return items.map((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        const obj = item as Record<string, unknown>;
+        const text = obj.text ?? obj.content ?? obj.description ??
+                     obj.insight ?? obj.frontier ?? obj.name ?? obj.title;
+        return typeof text === 'string' ? text : JSON.stringify(item);
+      }
+      return String(item);
+    });
   }
 }

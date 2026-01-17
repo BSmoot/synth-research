@@ -52,11 +52,11 @@ export class HypothesisSynthesizerAgent extends BaseAgent<
     super(client, { ...DEFAULT_CONFIG, ...config });
   }
 
-  async execute(input: SynthesisRequest): Promise<SynthesisResult> {
+  async execute(input: SynthesisRequest, signal?: AbortSignal): Promise<SynthesisResult> {
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt(input);
 
-    const response = await this.callLLM(systemPrompt, userPrompt);
+    const response = await this.callLLM(systemPrompt, userPrompt, { signal });
     return this.parseResponse(response);
   }
 

@@ -20,6 +20,8 @@ import {
 } from '../types/index.js';
 import { TraceWriter } from '../tracing/trace-writer.js';
 import type { TraceMetadata } from '../types/trace.js';
+import { CircuitBreaker } from '../resilience/circuit-breaker.js';
+import { TimeoutError, CircuitOpenError } from '../types/errors.js';
 
 export interface OrchestratorConfig {
   apiKey?: string;
@@ -28,6 +30,13 @@ export interface OrchestratorConfig {
   traceEnabled?: boolean;
   traceOutputDir?: string;
   maxTokenBudget?: number;
+  onProgress?: (stage: string, message: string) => void;
+  enableEvidenceGatherer?: boolean;
+  circuitBreaker?: {
+    enabled?: boolean;
+    failureThreshold?: number;
+    resetTimeoutMs?: number;
+  };
 }
 
 export class BudgetExceededError extends Error {
@@ -40,6 +49,7 @@ export class BudgetExceededError extends Error {
 export class SynthesisOrchestrator {
   private readonly client: Anthropic;
   private readonly config: OrchestratorConfig;
+  private readonly circuitBreaker?: CircuitBreaker;
 
   // Agents
   private readonly domainAnalyst: DomainAnalystAgent;
@@ -53,8 +63,23 @@ export class SynthesisOrchestrator {
       timeoutMs: 120000,
       traceEnabled: false,
       traceOutputDir: './traces',
+      enableEvidenceGatherer: false,
       ...config,
+      circuitBreaker: config.circuitBreaker ? {
+        enabled: config.circuitBreaker.enabled ?? false,
+        failureThreshold: config.circuitBreaker.failureThreshold ?? 5,
+        resetTimeoutMs: config.circuitBreaker.resetTimeoutMs ?? 30000,
+      } : undefined,
     };
+
+    // Initialize circuit breaker if enabled
+    if (this.config.circuitBreaker?.enabled) {
+      this.circuitBreaker = new CircuitBreaker({
+        failureThreshold: this.config.circuitBreaker.failureThreshold!,
+        resetTimeoutMs: this.config.circuitBreaker.resetTimeoutMs!,
+        name: 'synthesis-orchestrator',
+      });
+    }
 
     // Initialize Anthropic client
     this.client = new Anthropic({
@@ -66,6 +91,13 @@ export class SynthesisOrchestrator {
     this.crossPollinator = new CrossPollinatorAgent(this.client);
     this.hypothesisSynthesizer = new HypothesisSynthesizerAgent(this.client);
     this.hypothesisChallenger = new HypothesisChallengerAgent(this.client);
+  }
+
+  /**
+   * Get a readonly copy of the current configuration
+   */
+  getConfig(): Readonly<OrchestratorConfig> {
+    return { ...this.config };
   }
 
   /**
@@ -138,14 +170,15 @@ export class SynthesisOrchestrator {
   private async runDomainAnalysis(context: PipelineContext): Promise<void> {
     const startTime = Date.now();
     context.log('Stage 1: Domain Analysis');
+    this.reportProgress('domain-analysis', 'Analyzing domain concepts and methods...');
 
     try {
-      const analysis = await this.withRetry(() =>
+      const analysis = await this.withRetry((signal) =>
         this.domainAnalyst.execute({
           query: context.query.text,
           domain: context.domain,
           depth: 'standard',
-        })
+        }, signal)
       );
 
       context.setAnalysis(analysis);
@@ -176,6 +209,7 @@ export class SynthesisOrchestrator {
   private async runCrossPollination(context: PipelineContext): Promise<void> {
     const startTime = Date.now();
     context.log('Stage 2: Cross-Pollination');
+    this.reportProgress('cross-pollination', 'Finding cross-domain connections...');
 
     if (!context.analysis) {
       throw new Error('Domain analysis required before cross-pollination');
@@ -186,12 +220,12 @@ export class SynthesisOrchestrator {
         (d) => d !== context.domain
       );
 
-      const result = await this.withRetry(() =>
+      const result = await this.withRetry((signal) =>
         this.crossPollinator.execute({
           sourceDomain: context.analysis!,
           targetDomains,
           maxConnections: 10,
-        })
+        }, signal)
       );
 
       context.addConnections(result.connections);
@@ -220,6 +254,7 @@ export class SynthesisOrchestrator {
   private async runHypothesisSynthesis(context: PipelineContext): Promise<void> {
     const startTime = Date.now();
     context.log('Stage 3: Hypothesis Synthesis');
+    this.reportProgress('hypothesis-synthesis', 'Generating research hypotheses...');
 
     if (context.connections.length === 0) {
       context.addWarning('No connections available for hypothesis synthesis');
@@ -233,12 +268,12 @@ export class SynthesisOrchestrator {
     }
 
     try {
-      const result = await this.withRetry(() =>
+      const result = await this.withRetry((signal) =>
         this.hypothesisSynthesizer.execute({
           connections: context.connections,
           context: context.getSummary(),
           maxHypotheses: 5,
-        })
+        }, signal)
       );
 
       context.addHypotheses(result.hypotheses);
@@ -267,6 +302,7 @@ export class SynthesisOrchestrator {
   private async runHypothesisChallenge(context: PipelineContext): Promise<void> {
     const startTime = Date.now();
     context.log('Stage 4: Hypothesis Challenge');
+    this.reportProgress('hypothesis-challenge', 'Validating and scoring hypotheses...');
 
     if (context.hypotheses.length === 0) {
       context.addWarning('No hypotheses available for challenge');
@@ -280,10 +316,10 @@ export class SynthesisOrchestrator {
     }
 
     try {
-      const result = await this.withRetry(() =>
+      const result = await this.withRetry((signal) =>
         this.hypothesisChallenger.execute({
           hypotheses: context.hypotheses,
-        })
+        }, signal)
       );
 
       context.setScoredHypotheses(result.scoredHypotheses);
@@ -428,24 +464,150 @@ export class SynthesisOrchestrator {
       return 'materials-science';
     }
 
-    // Default to ML/AI
-    return 'ml-ai';
+    if (
+      lowerQuery.includes('economy') ||
+      lowerQuery.includes('market') ||
+      lowerQuery.includes('financial') ||
+      lowerQuery.includes('trade') ||
+      lowerQuery.includes('investment') ||
+      lowerQuery.includes('monetary') ||
+      lowerQuery.includes('fiscal')
+    ) {
+      return 'economics-finance';
+    }
+
+    if (
+      lowerQuery.includes('social') ||
+      lowerQuery.includes('society') ||
+      lowerQuery.includes('community') ||
+      lowerQuery.includes('governance') ||
+      lowerQuery.includes('institution') ||
+      lowerQuery.includes('culture') ||
+      lowerQuery.includes('political')
+    ) {
+      return 'social-systems';
+    }
+
+    if (
+      lowerQuery.includes('physics') ||
+      lowerQuery.includes('quantum') ||
+      lowerQuery.includes('mechanical') ||
+      lowerQuery.includes('electrical') ||
+      lowerQuery.includes('energy') ||
+      lowerQuery.includes('thermodynamic')
+    ) {
+      return 'physics-engineering';
+    }
+
+    if (
+      lowerQuery.includes('climate') ||
+      lowerQuery.includes('weather') ||
+      lowerQuery.includes('carbon') ||
+      lowerQuery.includes('ecosystem') ||
+      lowerQuery.includes('pollution') ||
+      lowerQuery.includes('renewable') ||
+      lowerQuery.includes('environmental')
+    ) {
+      return 'climate-environment';
+    }
+
+    if (
+      lowerQuery.includes('patient') ||
+      lowerQuery.includes('treatment') ||
+      lowerQuery.includes('disease') ||
+      lowerQuery.includes('hospital') ||
+      lowerQuery.includes('diagnosis') ||
+      lowerQuery.includes('therapy') ||
+      lowerQuery.includes('clinical')
+    ) {
+      return 'healthcare-medicine';
+    }
+
+    if (
+      lowerQuery.includes('brain') ||
+      lowerQuery.includes('cognition') ||
+      lowerQuery.includes('perception') ||
+      lowerQuery.includes('memory') ||
+      lowerQuery.includes('consciousness') ||
+      lowerQuery.includes('behavior') ||
+      lowerQuery.includes('psychology')
+    ) {
+      return 'cognitive-science';
+    }
+
+    if (
+      lowerQuery.includes('database') ||
+      lowerQuery.includes('cyber') ||
+      lowerQuery.includes('software') ||
+      lowerQuery.includes('algorithm') ||
+      lowerQuery.includes('server') ||
+      lowerQuery.includes('cloud') ||
+      lowerQuery.includes('api')
+    ) {
+      return 'information-systems';
+    }
+
+    // Default fallback to 'other' instead of null
+    return 'other';
   }
 
   /**
-   * Retry helper with exponential backoff
+   * Report progress to callback if configured
+   */
+  private reportProgress(stage: string, message: string): void {
+    this.config.onProgress?.(stage, message);
+  }
+
+  /**
+   * Retry helper with exponential backoff and timeout enforcement
    */
   private async withRetry<T>(
-    fn: () => Promise<T>,
+    fn: (signal: AbortSignal) => Promise<T>,
     retries = this.config.maxRetries ?? 2
   ): Promise<T> {
+    // Check circuit breaker first
+    if (this.circuitBreaker && !this.circuitBreaker.canExecute()) {
+      throw new CircuitOpenError('synthesis-orchestrator');
+    }
+
     let lastError: Error | undefined;
+    const timeoutMs = this.config.timeoutMs ?? 120000;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await fn();
+        // Create AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          const result = await fn(controller.signal);
+          clearTimeout(timeoutId);
+
+          // Record success for circuit breaker
+          this.circuitBreaker?.recordSuccess();
+          return result;
+        } catch (error) {
+          clearTimeout(timeoutId);
+
+          // Handle timeout/abort errors
+          if (error instanceof Error && error.name === 'AbortError') {
+            const timeoutError = new TimeoutError('llm-call', timeoutMs);
+            this.circuitBreaker?.recordFailure();
+            throw timeoutError;
+          }
+          throw error;
+        }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Don't retry on timeout or circuit open errors
+        if (error instanceof TimeoutError || error instanceof CircuitOpenError) {
+          this.circuitBreaker?.recordFailure();
+          throw error;
+        }
+
+        // Record failure for circuit breaker
+        this.circuitBreaker?.recordFailure();
 
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt);

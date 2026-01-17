@@ -6,4 +6,5 @@
 export * from './types/index.js';
 export * from './agents/index.js';
 export * from './orchestrator/index.js';
+export * from './resilience/index.js';
 export { PipelineContext } from './context/pipeline-context.js';

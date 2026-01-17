@@ -50,7 +50,7 @@ export abstract class BaseAgent<TInput, TOutput> {
   /**
    * Execute the agent with the given input
    */
-  abstract execute(input: TInput): Promise<TOutput>;
+  abstract execute(input: TInput, signal?: AbortSignal): Promise<TOutput>;
 
   /**
    * Build the system prompt for this agent
