@@ -5,6 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { TokenUsage } from '../types/tokens.js';
 import type { TraceEntry } from '../types/trace.js';
+import { TimeoutError } from '../types/errors.js';
 
 export interface AgentConfig {
   name: string;
@@ -76,22 +77,38 @@ export abstract class BaseAgent<TInput, TOutput> {
       tracker?: TokenTracker;
       traceCollector?: TraceCollector;
       agentName?: string;
+      signal?: AbortSignal;
     }
   ): Promise<string> {
     const startTime = Date.now();
 
-    const response = await this.client.messages.create({
-      model: this.config.model,
-      max_tokens: this.config.maxTokens,
-      temperature: this.config.temperature ?? 0.7,
-      system: systemPrompt,
-      messages: [
+    let response;
+    try {
+      response = await this.client.messages.create(
         {
-          role: 'user',
-          content: userPrompt,
+          model: this.config.model,
+          max_tokens: this.config.maxTokens,
+          temperature: this.config.temperature ?? 0.7,
+          system: systemPrompt,
+          messages: [
+            {
+              role: 'user',
+              content: userPrompt,
+            },
+          ],
         },
-      ],
-    });
+        options?.signal ? { signal: options.signal } : undefined
+      );
+    } catch (error) {
+      // Handle abort errors by wrapping in TimeoutError
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new TimeoutError(
+          options?.agentName ?? this.config.name,
+          0 // Timeout value not available here, caller should wrap
+        );
+      }
+      throw error;
+    }
 
     const durationMs = Date.now() - startTime;
 
@@ -159,5 +176,55 @@ export abstract class BaseAgent<TInput, TOutput> {
     }
 
     throw new Error('No JSON found in response');
+  }
+
+  /**
+   * Process items with controlled concurrency
+   * @param items - Items to process
+   * @param maxConcurrent - Maximum concurrent processors
+   * @param processor - Async function to process each item
+   * @returns Results in original item order
+   */
+  protected async processWithConcurrency<T, R>(
+    items: T[],
+    maxConcurrent: number,
+    processor: (item: T) => Promise<R>
+  ): Promise<R[]> {
+    if (items.length === 0) return [];
+
+    const results: R[] = new Array(items.length);
+    const executing: Set<Promise<void>> = new Set();
+    let firstError: Error | null = null;
+
+    for (let i = 0; i < items.length; i++) {
+      const index = i;
+      const item = items[i];
+
+      const promise = (async () => {
+        try {
+          results[index] = await processor(item);
+        } catch (error) {
+          if (!firstError) {
+            firstError = error instanceof Error ? error : new Error(String(error));
+          }
+          throw error;
+        }
+      })();
+
+      const tracked = promise.finally(() => executing.delete(tracked));
+      executing.add(tracked);
+
+      if (executing.size >= maxConcurrent) {
+        await Promise.race(executing);
+      }
+    }
+
+    await Promise.all(executing);
+
+    if (firstError) {
+      throw firstError;
+    }
+
+    return results;
   }
 }

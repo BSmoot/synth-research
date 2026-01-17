@@ -1,6 +1,7 @@
 /**
  * Hypothesis Challenger Agent
  * Validates and scores hypotheses using the quality rubric
+ * Supports parallel batch evaluation (ADR-006)
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -13,8 +14,19 @@ import {
 } from '../types/index.js';
 import { z } from 'zod';
 
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface ParallelConfig {
+  mode?: 'single' | 'batched' | 'individual';
+  batchSize?: number;
+  maxConcurrent?: number;
+}
+
 export interface ChallengeRequest {
   hypotheses: Hypothesis[];
+  parallelConfig?: ParallelConfig;
 }
 
 export interface ChallengeResult {
@@ -34,21 +46,40 @@ export interface ChallengeResult {
   };
 }
 
+interface BatchResult {
+  scoredHypotheses: ScoredHypothesis[];
+  rejected: ChallengeResult['rejected'];
+}
+
+interface BatchError {
+  batchIndex: number;
+  hypothesisIds: string[];
+  error: Error;
+}
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
 const ChallengeResultSchema = z.object({
   scoredHypotheses: z.array(ScoredHypothesisSchema),
-  rejected: z.array(
-    z.object({
-      hypothesis: z.any(),
-      scores: z.any(),
-      verdict: z.literal('fail'),
-      rejectionReasons: z.array(z.string()),
-    })
-  ).transform((arr) => arr.map((item) => ({
-    hypothesis: item.hypothesis as Hypothesis,
-    scores: item.scores as HypothesisScores,
-    verdict: 'fail' as const,
-    rejectionReasons: item.rejectionReasons,
-  }))),
+  rejected: z
+    .array(
+      z.object({
+        hypothesis: z.any(),
+        scores: z.any(),
+        verdict: z.literal('fail'),
+        rejectionReasons: z.array(z.string()),
+      })
+    )
+    .transform((arr) =>
+      arr.map((item) => ({
+        hypothesis: item.hypothesis as Hypothesis,
+        scores: item.scores as HypothesisScores,
+        verdict: 'fail' as const,
+        rejectionReasons: item.rejectionReasons,
+      }))
+    ),
   summary: z.object({
     totalChallenged: z.number(),
     passed: z.number(),
@@ -58,11 +89,15 @@ const ChallengeResultSchema = z.object({
   }),
 });
 
+// ============================================================================
+// Agent
+// ============================================================================
+
 const DEFAULT_CONFIG: AgentConfig = {
   name: 'hypothesis-challenger',
   model: 'claude-opus-4-20250514',
   maxTokens: 8192,
-  temperature: 0.5, // Lower temperature for more consistent scoring
+  temperature: 0.5,
 };
 
 export class HypothesisChallengerAgent extends BaseAgent<
@@ -74,12 +109,137 @@ export class HypothesisChallengerAgent extends BaseAgent<
   }
 
   async execute(input: ChallengeRequest): Promise<ChallengeResult> {
-    const systemPrompt = this.buildSystemPrompt();
-    const userPrompt = this.buildUserPrompt(input);
+    const config = this.getParallelConfig(
+      input.hypotheses.length,
+      input.parallelConfig
+    );
 
+    if (config.mode === 'single') {
+      return this.evaluateSingle(input.hypotheses);
+    }
+
+    return this.evaluateParallel(input.hypotheses, config);
+  }
+
+  // ============================================================================
+  // Parallel Evaluation Methods
+  // ============================================================================
+
+  private getParallelConfig(
+    hypothesisCount: number,
+    override?: ParallelConfig
+  ): Required<ParallelConfig> {
+    if (override?.mode) {
+      return {
+        mode: override.mode,
+        batchSize: override.batchSize ?? 2,
+        maxConcurrent: override.maxConcurrent ?? 3,
+      };
+    }
+
+    if (hypothesisCount <= 3) {
+      return { mode: 'single', batchSize: hypothesisCount, maxConcurrent: 1 };
+    }
+    return { mode: 'batched', batchSize: 2, maxConcurrent: 3 };
+  }
+
+  private createBatches<T>(items: T[], batchSize: number): T[][] {
+    const batches: T[][] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      batches.push(items.slice(i, i + batchSize));
+    }
+    return batches;
+  }
+
+  private async evaluateSingle(hypotheses: Hypothesis[]): Promise<ChallengeResult> {
+    const systemPrompt = this.buildSystemPrompt();
+    const userPrompt = this.buildUserPrompt({ hypotheses });
     const response = await this.callLLM(systemPrompt, userPrompt);
     return this.parseResponse(response);
   }
+
+  private async evaluateBatch(hypotheses: Hypothesis[]): Promise<BatchResult> {
+    const result = await this.evaluateSingle(hypotheses);
+    return {
+      scoredHypotheses: result.scoredHypotheses,
+      rejected: result.rejected,
+    };
+  }
+
+  private async evaluateParallel(
+    hypotheses: Hypothesis[],
+    config: Required<ParallelConfig>
+  ): Promise<ChallengeResult> {
+    const batches = this.createBatches(hypotheses, config.batchSize);
+    const results: BatchResult[] = [];
+    const errors: BatchError[] = [];
+
+    await this.processWithConcurrency(
+      batches.map((batch, index) => ({ batch, index })),
+      config.maxConcurrent,
+      async ({ batch, index }) => {
+        try {
+          const result = await this.evaluateBatch(batch);
+          results.push(result);
+        } catch (error) {
+          errors.push({
+            batchIndex: index,
+            hypothesisIds: batch.map((h) => h.id),
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
+        }
+      }
+    );
+
+    // All batches failed
+    if (errors.length > 0 && results.length === 0) {
+      throw new AggregateError(
+        errors.map((e) => e.error),
+        `All ${errors.length} hypothesis evaluation batches failed`
+      );
+    }
+
+    return this.mergeResults(results);
+  }
+
+  private mergeResults(batchResults: BatchResult[]): ChallengeResult {
+    const allScored: ScoredHypothesis[] = [];
+    const allRejected: ChallengeResult['rejected'] = [];
+
+    for (const batch of batchResults) {
+      allScored.push(...batch.scoredHypotheses);
+      allRejected.push(...batch.rejected);
+    }
+
+    return {
+      scoredHypotheses: allScored,
+      rejected: allRejected,
+      summary: this.calculateSummary(allScored, allRejected),
+    };
+  }
+
+  private calculateSummary(
+    scored: ScoredHypothesis[],
+    rejected: ChallengeResult['rejected']
+  ): ChallengeResult['summary'] {
+    const total = scored.length + rejected.length;
+    const passed = scored.filter((h) => h.verdict === 'pass').length;
+    const borderline = scored.filter((h) => h.verdict === 'borderline').length;
+    const failed =
+      rejected.length + scored.filter((h) => h.verdict === 'fail').length;
+
+    const allComposites = scored.map((h) => h.scores.composite);
+    const averageScore =
+      allComposites.length > 0
+        ? allComposites.reduce((a, b) => a + b, 0) / allComposites.length
+        : 0;
+
+    return { totalChallenged: total, passed, borderline, failed, averageScore };
+  }
+
+  // ============================================================================
+  // LLM Methods
+  // ============================================================================
 
   protected buildSystemPrompt(): string {
     return `You are the Hypothesis Challenger, a rigorous evaluator of research hypotheses.
@@ -149,7 +309,7 @@ Respond with ONLY valid JSON matching this structure:
 }`;
   }
 
-  protected buildUserPrompt(input: ChallengeRequest): string {
+  protected buildUserPrompt(input: { hypotheses: Hypothesis[] }): string {
     const hypothesesText = input.hypotheses
       .map(
         (h, i) => `
@@ -193,8 +353,6 @@ Output ONLY valid JSON.`;
   protected parseResponse(response: string): ChallengeResult {
     const json = this.extractJSON(response);
     const parsed = JSON.parse(json);
-
-    // Validate structure
     return ChallengeResultSchema.parse(parsed);
   }
 }
