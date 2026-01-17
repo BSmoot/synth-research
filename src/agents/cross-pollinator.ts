@@ -11,6 +11,7 @@ import {
   CrossPollinationResult,
   CrossPollinationResultSchema,
   DOMAIN_METADATA,
+  normalizeDomainsInObject,
 } from '../types/index.js';
 
 export interface PollinationRequest {
@@ -150,7 +151,10 @@ Remember to output ONLY valid JSON.`;
 
   protected parseResponse(response: string): CrossPollinationResult {
     const json = this.extractJSON(response);
-    const parsed = JSON.parse(json);
+    let parsed = JSON.parse(json);
+
+    // Normalize all domain fields before validation
+    parsed = normalizeDomainsInObject(parsed, 'other');
 
     // Ensure IDs are present
     if (parsed.connections) {

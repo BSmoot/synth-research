@@ -243,6 +243,169 @@ export const DOMAIN_METADATA: Record<DomainTag, DomainMetadata> = {
 };
 
 // ============================================================================
+// Domain Normalization
+// ============================================================================
+
+/**
+ * Maps common LLM-generated domain names to canonical DomainTag values.
+ * Used to gracefully handle variations in LLM output.
+ */
+export const DOMAIN_ALIASES: Record<string, DomainTag> = {
+  // ml-ai variations
+  'ml-ai': 'ml-ai',
+  'machine-learning': 'ml-ai',
+  'machine learning': 'ml-ai',
+  'machine-learning-ai': 'ml-ai',
+  'ml': 'ml-ai',
+  'ai': 'ml-ai',
+  'artificial-intelligence': 'ml-ai',
+  'artificial intelligence': 'ml-ai',
+  'deep-learning': 'ml-ai',
+  'deep learning': 'ml-ai',
+
+  // computational-biology variations
+  'computational-biology': 'computational-biology',
+  'computational biology': 'computational-biology',
+  'comp-bio': 'computational-biology',
+  'compbio': 'computational-biology',
+  'bioinformatics': 'computational-biology',
+  'biology': 'computational-biology',
+
+  // materials-science variations
+  'materials-science': 'materials-science',
+  'materials science': 'materials-science',
+  'material-science': 'materials-science',
+  'material science': 'materials-science',
+  'matsci': 'materials-science',
+  'materials': 'materials-science',
+
+  // economics-finance variations
+  'economics-finance': 'economics-finance',
+  'economics': 'economics-finance',
+  'finance': 'economics-finance',
+  'econ': 'economics-finance',
+  'financial': 'economics-finance',
+  'economic': 'economics-finance',
+  'markets': 'economics-finance',
+
+  // social-systems variations
+  'social-systems': 'social-systems',
+  'social': 'social-systems',
+  'sociology': 'social-systems',
+  'social-science': 'social-systems',
+  'social science': 'social-systems',
+  'governance': 'social-systems',
+  'policy': 'social-systems',
+
+  // physics-engineering variations
+  'physics-engineering': 'physics-engineering',
+  'physics': 'physics-engineering',
+  'engineering': 'physics-engineering',
+  'mechanical': 'physics-engineering',
+  'electrical': 'physics-engineering',
+
+  // climate-environment variations
+  'climate-environment': 'climate-environment',
+  'climate': 'climate-environment',
+  'environment': 'climate-environment',
+  'environmental': 'climate-environment',
+  'ecology': 'climate-environment',
+  'sustainability': 'climate-environment',
+
+  // healthcare-medicine variations
+  'healthcare-medicine': 'healthcare-medicine',
+  'healthcare': 'healthcare-medicine',
+  'medicine': 'healthcare-medicine',
+  'medical': 'healthcare-medicine',
+  'health': 'healthcare-medicine',
+  'clinical': 'healthcare-medicine',
+
+  // cognitive-science variations
+  'cognitive-science': 'cognitive-science',
+  'cognitive': 'cognitive-science',
+  'neuroscience': 'cognitive-science',
+  'psychology': 'cognitive-science',
+  'cognition': 'cognitive-science',
+  'brain': 'cognitive-science',
+
+  // information-systems variations
+  'information-systems': 'information-systems',
+  'information': 'information-systems',
+  'computing': 'information-systems',
+  'informatics': 'information-systems',
+  'software': 'information-systems',
+  'computer-science': 'information-systems',
+  'computer science': 'information-systems',
+
+  // other variations
+  'other': 'other',
+  'general': 'other',
+  'interdisciplinary': 'other',
+  'misc': 'other',
+};
+
+/**
+ * Normalizes a domain string to a valid DomainTag.
+ * Handles common LLM variations and typos gracefully.
+ *
+ * @param domain - The domain string from LLM output
+ * @param fallback - Fallback domain if normalization fails
+ * @returns A valid DomainTag
+ */
+export function normalizeDomain(domain: unknown, fallback: DomainTag): DomainTag {
+  if (!domain || typeof domain !== 'string') return fallback;
+
+  const lower = domain.toLowerCase().trim();
+
+  // Check aliases (case-insensitive)
+  if (lower in DOMAIN_ALIASES) return DOMAIN_ALIASES[lower];
+
+  // Check if it's already a valid tag
+  if (SUPPORTED_DOMAINS.includes(domain as DomainTag)) {
+    return domain as DomainTag;
+  }
+
+  // Fuzzy matching: try to find partial matches (require min 4 chars to avoid false positives)
+  for (const [alias, tag] of Object.entries(DOMAIN_ALIASES)) {
+    if (alias.length >= 4 && (lower.includes(alias) || alias.includes(lower))) {
+      return tag;
+    }
+  }
+
+  return fallback;
+}
+
+/**
+ * Recursively normalizes all domain fields in an object.
+ * Used to process entire LLM response objects.
+ *
+ * @param obj - Object containing domain fields
+ * @param fallback - Fallback domain for normalization
+ * @returns Object with normalized domain fields
+ */
+export function normalizeDomainsInObject<T>(obj: T, fallback: DomainTag): T {
+  if (!obj || typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => normalizeDomainsInObject(item, fallback)) as T;
+  }
+
+  const result = { ...obj } as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(result)) {
+    if (key === 'domain' || key === 'sourceDomain' || key === 'targetDomain') {
+      result[key] = normalizeDomain(value, fallback);
+    } else if (key === 'targetDomains' && Array.isArray(value)) {
+      result[key] = value.map((d) => normalizeDomain(d, fallback));
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = normalizeDomainsInObject(value, fallback);
+    }
+  }
+
+  return result as T;
+}
+
+// ============================================================================
 // Concept Types
 // ============================================================================
 

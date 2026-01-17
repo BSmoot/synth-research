@@ -10,94 +10,8 @@ import {
   DomainAnalysisSchema,
   DomainTag,
   DOMAIN_METADATA,
+  normalizeDomain,
 } from '../types/index.js';
-
-const DOMAIN_ALIASES: Record<string, DomainTag> = {
-  // ml-ai variations
-  'ml-ai': 'ml-ai',
-  'machine-learning': 'ml-ai',
-  'machine learning': 'ml-ai',
-  'machine-learning-ai': 'ml-ai',
-  'ml': 'ml-ai',
-  'ai': 'ml-ai',
-  'artificial-intelligence': 'ml-ai',
-  'artificial intelligence': 'ml-ai',
-
-  // computational-biology variations
-  'computational-biology': 'computational-biology',
-  'computational biology': 'computational-biology',
-  'comp-bio': 'computational-biology',
-  'compbio': 'computational-biology',
-  'bioinformatics': 'computational-biology',
-
-  // materials-science variations
-  'materials-science': 'materials-science',
-  'materials science': 'materials-science',
-  'material-science': 'materials-science',
-  'material science': 'materials-science',
-  'matsci': 'materials-science',
-
-  // economics-finance variations
-  'economics-finance': 'economics-finance',
-  'economics': 'economics-finance',
-  'finance': 'economics-finance',
-  'econ': 'economics-finance',
-  'financial': 'economics-finance',
-  'economic': 'economics-finance',
-  'markets': 'economics-finance',
-
-  // social-systems variations
-  'social-systems': 'social-systems',
-  'social': 'social-systems',
-  'sociology': 'social-systems',
-  'social-science': 'social-systems',
-  'governance': 'social-systems',
-  'policy': 'social-systems',
-
-  // physics-engineering variations
-  'physics-engineering': 'physics-engineering',
-  'physics': 'physics-engineering',
-  'engineering': 'physics-engineering',
-  'mechanical': 'physics-engineering',
-  'electrical': 'physics-engineering',
-
-  // climate-environment variations
-  'climate-environment': 'climate-environment',
-  'climate': 'climate-environment',
-  'environment': 'climate-environment',
-  'environmental': 'climate-environment',
-  'ecology': 'climate-environment',
-  'sustainability': 'climate-environment',
-
-  // healthcare-medicine variations
-  'healthcare-medicine': 'healthcare-medicine',
-  'healthcare': 'healthcare-medicine',
-  'medicine': 'healthcare-medicine',
-  'medical': 'healthcare-medicine',
-  'health': 'healthcare-medicine',
-  'clinical': 'healthcare-medicine',
-
-  // cognitive-science variations
-  'cognitive-science': 'cognitive-science',
-  'cognitive': 'cognitive-science',
-  'neuroscience': 'cognitive-science',
-  'psychology': 'cognitive-science',
-  'cognition': 'cognitive-science',
-  'brain': 'cognitive-science',
-
-  // information-systems variations
-  'information-systems': 'information-systems',
-  'information': 'information-systems',
-  'computing': 'information-systems',
-  'informatics': 'information-systems',
-  'software': 'information-systems',
-
-  // other variations
-  'other': 'other',
-  'general': 'other',
-  'interdisciplinary': 'other',
-  'misc': 'other',
-};
 
 export interface DomainAnalysisRequest {
   query: string;
@@ -229,9 +143,9 @@ Remember to output ONLY valid JSON.`;
     const json = this.extractJSON(response);
     const parsed = JSON.parse(json);
 
-    // Step 2: Normalize top-level domain
+    // Step 2: Normalize top-level domain using shared normalizeDomain function
     const inputDomain = this.currentInputDomain ?? 'ml-ai';
-    const normalizedDomain = this.normalizeDomain(parsed.domain, inputDomain);
+    const normalizedDomain = normalizeDomain(parsed.domain, inputDomain);
     parsed.domain = normalizedDomain;
 
     // Step 3-5: Normalize concepts, methods, openProblems arrays
@@ -268,36 +182,15 @@ Remember to output ONLY valid JSON.`;
     return DomainAnalysisSchema.parse(parsed);
   }
 
-  private normalizeDomain(domain: unknown, fallback: DomainTag): DomainTag {
-    if (!domain || typeof domain !== 'string') return fallback;
-    const lower = domain.toLowerCase();
-    if (lower in DOMAIN_ALIASES) return DOMAIN_ALIASES[lower];
-    if (domain in DOMAIN_ALIASES) return DOMAIN_ALIASES[domain];
-    const validTags = [
-      'computational-biology',
-      'materials-science',
-      'ml-ai',
-      'economics-finance',
-      'social-systems',
-      'physics-engineering',
-      'climate-environment',
-      'healthcare-medicine',
-      'cognitive-science',
-      'information-systems',
-      'other',
-    ];
-    return validTags.includes(domain) ? (domain as DomainTag) : fallback;
-  }
-
   private normalizeConcept(item: unknown, fallbackDomain: DomainTag): unknown {
     if (!item || typeof item !== 'object') return item;
     const obj = item as Record<string, unknown>;
 
-    // Inject/normalize domain
+    // Inject/normalize domain using shared normalizeDomain function
     if (!obj.domain) {
       obj.domain = fallbackDomain;
     } else {
-      obj.domain = this.normalizeDomain(obj.domain, fallbackDomain);
+      obj.domain = normalizeDomain(obj.domain, fallbackDomain);
     }
 
     // Normalize sources

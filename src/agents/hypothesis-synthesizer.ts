@@ -9,6 +9,7 @@ import {
   CrossDomainConnection,
   Hypothesis,
   HypothesisSchema,
+  normalizeDomainsInObject,
 } from '../types/index.js';
 import { ContextSummary } from '../context/pipeline-context.js';
 import { z } from 'zod';
@@ -160,7 +161,10 @@ Remember to output ONLY valid JSON.`;
 
   protected parseResponse(response: string): SynthesisResult {
     const json = this.extractJSON(response);
-    const parsed = JSON.parse(json);
+    let parsed = JSON.parse(json);
+
+    // Normalize all domain fields before validation
+    parsed = normalizeDomainsInObject(parsed, 'other');
 
     // Ensure required fields
     if (parsed.hypotheses) {
