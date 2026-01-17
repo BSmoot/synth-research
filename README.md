@@ -261,6 +261,9 @@ See `docs/architecture/` for detailed ADRs:
 - ADR-002: Agent Topology
 - ADR-003: Knowledge Representation
 - ADR-004: Hypothesis Scoring
+- ADR-005: Timeout and Circuit Breaker Strategy (Proposed)
+- ADR-006: Parallel Hypothesis Evaluation (Proposed)
+- ADR-007: Evidence Gatherer Scope (Proposed)
 
 ## License
 
