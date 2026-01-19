@@ -41,8 +41,17 @@ export class DomainAnalystAgent extends BaseAgent<
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt(input);
 
-    const response = await this.callLLM(systemPrompt, userPrompt, { signal });
-    return this.parseResponse(response);
+    // Use tool_use for guaranteed structured output
+    const result = await this.callLLMWithSchema(
+      systemPrompt,
+      userPrompt,
+      DomainAnalysisSchema,
+      'submit_domain_analysis',
+      'Submit structured domain analysis results with concepts, methods, and open problems',
+      { signal }
+    );
+
+    return result;
   }
 
   protected buildSystemPrompt(): string {
@@ -148,20 +157,20 @@ Remember to output ONLY valid JSON.`;
     const normalizedDomain = normalizeDomain(parsed.domain, inputDomain);
     parsed.domain = normalizedDomain;
 
-    // Step 3-5: Normalize concepts, methods, openProblems arrays
+    // Step 3-5: Normalize concepts, methods, openProblems arrays with appropriate default types
     if (Array.isArray(parsed.concepts)) {
       parsed.concepts = parsed.concepts.map((item: unknown) =>
-        this.normalizeConcept(item, normalizedDomain)
+        this.normalizeConcept(item, normalizedDomain, 'theory')
       );
     }
     if (Array.isArray(parsed.methods)) {
       parsed.methods = parsed.methods.map((item: unknown) =>
-        this.normalizeConcept(item, normalizedDomain)
+        this.normalizeConcept(item, normalizedDomain, 'method')
       );
     }
     if (Array.isArray(parsed.openProblems)) {
       parsed.openProblems = parsed.openProblems.map((item: unknown) =>
-        this.normalizeConcept(item, normalizedDomain)
+        this.normalizeConcept(item, normalizedDomain, 'problem')
       );
     }
 
@@ -182,7 +191,11 @@ Remember to output ONLY valid JSON.`;
     return DomainAnalysisSchema.parse(parsed);
   }
 
-  private normalizeConcept(item: unknown, fallbackDomain: DomainTag): unknown {
+  private normalizeConcept(
+    item: unknown,
+    fallbackDomain: DomainTag,
+    defaultType: 'method' | 'phenomenon' | 'problem' | 'tool' | 'theory' | 'metric'
+  ): unknown {
     if (!item || typeof item !== 'object') return item;
     const obj = item as Record<string, unknown>;
 
@@ -193,10 +206,34 @@ Remember to output ONLY valid JSON.`;
       obj.domain = normalizeDomain(obj.domain, fallbackDomain);
     }
 
+    // Inject type if missing (critical for schema validation)
+    if (!obj.type) {
+      obj.type = defaultType;
+    }
+
+    // Map title → name if name is missing (openProblems often use 'title')
+    if (!obj.name && obj.title) {
+      obj.name = obj.title;
+    }
+
+    // Ensure relatedConcepts exists - map from applications/approaches if needed
+    if (!obj.relatedConcepts) {
+      if (Array.isArray(obj.applications)) {
+        obj.relatedConcepts = obj.applications;
+      } else if (Array.isArray(obj.approaches)) {
+        obj.relatedConcepts = obj.approaches;
+      } else {
+        obj.relatedConcepts = [];
+      }
+    }
+
     // Normalize sources
     if (Array.isArray(obj.sources)) {
       obj.sources = obj.sources.map((src, idx) => this.normalizeSource(src, idx));
+    } else {
+      obj.sources = [];
     }
+
     return obj;
   }
 

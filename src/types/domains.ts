@@ -256,6 +256,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   'machine-learning': 'ml-ai',
   'machine learning': 'ml-ai',
   'machine-learning-ai': 'ml-ai',
+  'machine learning & ai': 'ml-ai',
   'ml': 'ml-ai',
   'ai': 'ml-ai',
   'artificial-intelligence': 'ml-ai',
@@ -282,6 +283,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   // economics-finance variations
   'economics-finance': 'economics-finance',
   'economics': 'economics-finance',
+  'economics & finance': 'economics-finance',
   'finance': 'economics-finance',
   'econ': 'economics-finance',
   'financial': 'economics-finance',
@@ -291,6 +293,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   // social-systems variations
   'social-systems': 'social-systems',
   'social': 'social-systems',
+  'social systems': 'social-systems',
   'sociology': 'social-systems',
   'social-science': 'social-systems',
   'social science': 'social-systems',
@@ -300,6 +303,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   // physics-engineering variations
   'physics-engineering': 'physics-engineering',
   'physics': 'physics-engineering',
+  'physics & engineering': 'physics-engineering',
   'engineering': 'physics-engineering',
   'mechanical': 'physics-engineering',
   'electrical': 'physics-engineering',
@@ -307,6 +311,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   // climate-environment variations
   'climate-environment': 'climate-environment',
   'climate': 'climate-environment',
+  'climate & environment': 'climate-environment',
   'environment': 'climate-environment',
   'environmental': 'climate-environment',
   'ecology': 'climate-environment',
@@ -315,6 +320,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   // healthcare-medicine variations
   'healthcare-medicine': 'healthcare-medicine',
   'healthcare': 'healthcare-medicine',
+  'healthcare & medicine': 'healthcare-medicine',
   'medicine': 'healthcare-medicine',
   'medical': 'healthcare-medicine',
   'health': 'healthcare-medicine',
@@ -323,6 +329,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   // cognitive-science variations
   'cognitive-science': 'cognitive-science',
   'cognitive': 'cognitive-science',
+  'cognitive science': 'cognitive-science',
   'neuroscience': 'cognitive-science',
   'psychology': 'cognitive-science',
   'cognition': 'cognitive-science',
@@ -331,6 +338,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   // information-systems variations
   'information-systems': 'information-systems',
   'information': 'information-systems',
+  'information systems': 'information-systems',
   'computing': 'information-systems',
   'informatics': 'information-systems',
   'software': 'information-systems',
@@ -339,6 +347,7 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
 
   // other variations
   'other': 'other',
+  'other / interdisciplinary': 'other',
   'general': 'other',
   'interdisciplinary': 'other',
   'misc': 'other',

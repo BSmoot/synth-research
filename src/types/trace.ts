@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { TokenUsageSchema } from './tokens.js';
+import { SCHEMA_VERSION } from './schema-version.js';
 
 // ============================================================================
 // Trace Entry
@@ -33,6 +34,7 @@ export type TraceEntry = z.infer<typeof TraceEntrySchema>;
 // ============================================================================
 
 export const TraceMetadataSchema = z.object({
+  schemaVersion: z.string().default(SCHEMA_VERSION),
   traceId: z.string(),
   query: z.string(),
   domain: z.string(),

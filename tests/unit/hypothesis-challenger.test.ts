@@ -54,7 +54,7 @@ const createMockHypothesis = (id: string): Hypothesis => ({
   },
   confidence: 'medium',
   citations: [],
-  generatedAt: new Date('2026-01-17'),
+  generatedAt: new Date('2026-01-17').toISOString(),
   status: 'raw',
 });
 
@@ -107,6 +107,12 @@ const createMockClient = () =>
       create: vi.fn(),
     },
   }) as unknown as Anthropic;
+
+// Helper to create text response format (for callLLM with JSON parsing)
+const createTextResponse = (result: ChallengeResult) => ({
+  content: [{ type: 'text', text: JSON.stringify(result) }],
+  usage: { input_tokens: 100, output_tokens: 200 },
+});
 
 describe('HypothesisChallengerAgent - Parallel Evaluation', () => {
   let agent: TestableChallengerAgent;
@@ -274,10 +280,9 @@ describe('HypothesisChallengerAgent - Parallel Evaluation', () => {
         },
       });
 
-      (mockClient.messages.create as any).mockResolvedValueOnce({
-        content: [{ type: 'text', text: mockResponse }],
-        usage: { input_tokens: 100, output_tokens: 200 },
-      });
+      (mockClient.messages.create as any).mockResolvedValueOnce(
+        createTextResponse(JSON.parse(mockResponse))
+      );
 
       const result = await agent.execute({ hypotheses });
 
@@ -290,45 +295,35 @@ describe('HypothesisChallengerAgent - Parallel Evaluation', () => {
         createMockHypothesis(`h${i + 1}`)
       );
 
-      const createBatchResponse = (ids: string[]) =>
-        JSON.stringify({
-          scoredHypotheses: ids.map((id) => ({
-            ...createMockHypothesis(id),
-            scores: {
-              specificity: { score: 4, weight: 0.25, explanation: 'Good' },
-              novelty: { score: 3, weight: 0.2, explanation: 'Ok' },
-              connectionValidity: { score: 4, weight: 0.25, explanation: 'Good' },
-              feasibility: { score: 3, weight: 0.15, explanation: 'Ok' },
-              grounding: { score: 3, weight: 0.15, explanation: 'Ok' },
-              composite: 3.5,
-            },
-            verdict: 'pass',
-            challengeNotes: [],
-            status: 'challenged',
-          })),
-          rejected: [],
-          summary: {
-            totalChallenged: ids.length,
-            passed: ids.length,
-            borderline: 0,
-            failed: 0,
-            averageScore: 3.5,
+      const createBatchResult = (ids: string[]): ChallengeResult => ({
+        scoredHypotheses: ids.map((id) => ({
+          ...createMockHypothesis(id),
+          scores: {
+            specificity: { score: 4, weight: 0.25, explanation: 'Good' },
+            novelty: { score: 3, weight: 0.2, explanation: 'Ok' },
+            connectionValidity: { score: 4, weight: 0.25, explanation: 'Good' },
+            feasibility: { score: 3, weight: 0.15, explanation: 'Ok' },
+            grounding: { score: 3, weight: 0.15, explanation: 'Ok' },
+            composite: 3.5,
           },
-        });
+          verdict: 'pass',
+          challengeNotes: [],
+          status: 'challenged',
+        })),
+        rejected: [],
+        summary: {
+          totalChallenged: ids.length,
+          passed: ids.length,
+          borderline: 0,
+          failed: 0,
+          averageScore: 3.5,
+        },
+      });
 
       (mockClient.messages.create as any)
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: createBatchResponse(['h1', 'h2']) }],
-          usage: { input_tokens: 100, output_tokens: 200 },
-        })
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: createBatchResponse(['h3', 'h4']) }],
-          usage: { input_tokens: 100, output_tokens: 200 },
-        })
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: createBatchResponse(['h5']) }],
-          usage: { input_tokens: 100, output_tokens: 200 },
-        });
+        .mockResolvedValueOnce(createTextResponse(createBatchResult(['h1', 'h2'])))
+        .mockResolvedValueOnce(createTextResponse(createBatchResult(['h3', 'h4'])))
+        .mockResolvedValueOnce(createTextResponse(createBatchResult(['h5'])));
 
       const result = await agent.execute({ hypotheses });
 
@@ -344,7 +339,7 @@ describe('HypothesisChallengerAgent - Parallel Evaluation', () => {
         createMockHypothesis(`h${i + 1}`)
       );
 
-      const successResponse = JSON.stringify({
+      const successResult: ChallengeResult = {
         scoredHypotheses: [createMockScoredHypothesis('h1'), createMockScoredHypothesis('h2')],
         rejected: [],
         summary: {
@@ -354,13 +349,10 @@ describe('HypothesisChallengerAgent - Parallel Evaluation', () => {
           failed: 0,
           averageScore: 3.45,
         },
-      });
+      };
 
       (mockClient.messages.create as any)
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: successResponse }],
-          usage: { input_tokens: 100, output_tokens: 200 },
-        })
+        .mockResolvedValueOnce(createTextResponse(successResult))
         .mockRejectedValueOnce(new Error('Batch 2 failed'));
 
       const config: Required<ParallelConfig> = {
@@ -399,7 +391,7 @@ describe('HypothesisChallengerAgent - Parallel Evaluation', () => {
     it('should respect parallelConfig override', async () => {
       const hypotheses = [createMockHypothesis('h1'), createMockHypothesis('h2')];
 
-      const mockResponse = JSON.stringify({
+      const mockResult: ChallengeResult = {
         scoredHypotheses: [createMockScoredHypothesis('h1')],
         rejected: [],
         summary: {
@@ -409,17 +401,11 @@ describe('HypothesisChallengerAgent - Parallel Evaluation', () => {
           failed: 0,
           averageScore: 3.45,
         },
-      });
+      };
 
       (mockClient.messages.create as any)
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: mockResponse }],
-          usage: { input_tokens: 100, output_tokens: 200 },
-        })
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: mockResponse }],
-          usage: { input_tokens: 100, output_tokens: 200 },
-        });
+        .mockResolvedValueOnce(createTextResponse(mockResult))
+        .mockResolvedValueOnce(createTextResponse(mockResult));
 
       const result = await agent.execute({
         hypotheses,

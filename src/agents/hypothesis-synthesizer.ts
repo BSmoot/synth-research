@@ -57,6 +57,7 @@ export class HypothesisSynthesizerAgent extends BaseAgent<
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt(input);
 
+    // Use free-text JSON for complex schemas (tool_use times out with deeply nested schemas)
     const response = await this.callLLM(systemPrompt, userPrompt, { signal });
     return this.parseResponse(response);
   }
@@ -166,18 +167,258 @@ Remember to output ONLY valid JSON.`;
     // Normalize all domain fields before validation
     parsed = normalizeDomainsInObject(parsed, 'other');
 
-    // Ensure required fields
+    // Deeply normalize hypotheses
     if (parsed.hypotheses) {
       parsed.hypotheses = parsed.hypotheses.map(
-        (h: Record<string, unknown>, i: number) => ({
-          ...h,
-          id: h.id || `hyp-${String(i + 1).padStart(3, '0')}`,
-          generatedAt: h.generatedAt || new Date().toISOString(),
-          status: h.status || 'raw',
-        })
+        (h: Record<string, unknown>, i: number) =>
+          this.normalizeHypothesis(h, i)
       );
     }
 
     return SynthesisResultSchema.parse(parsed);
+  }
+
+  private normalizeHypothesis(
+    h: Record<string, unknown>,
+    index: number
+  ): Record<string, unknown> {
+    return {
+      ...h,
+      id: h.id || `hyp-${String(index + 1).padStart(3, '0')}`,
+      generatedAt:
+        typeof h.generatedAt === 'string'
+          ? h.generatedAt
+          : new Date().toISOString(),
+      status: h.status || 'raw',
+      connection: this.normalizeConnection(h.connection),
+      citations: this.normalizeCitations(h.citations),
+      suggestedExperiment: this.normalizeExperiment(h.suggestedExperiment),
+    };
+  }
+
+  private normalizeConnection(
+    conn: unknown
+  ): Record<string, unknown> {
+    if (!conn || typeof conn !== 'object') {
+      return {
+        id: 'conn-fallback',
+        sourceConcept: this.createFallbackConcept('source'),
+        targetConcept: this.createFallbackConcept('target'),
+        connectionType: 'shared-structure',
+        similarityScore: 3,
+        explanation: 'Connection details not provided',
+        confidence: 'medium',
+      };
+    }
+
+    const c = conn as Record<string, unknown>;
+    return {
+      id: c.id || 'conn-gen',
+      sourceConcept: this.normalizeConcept(c.sourceConcept, 'source'),
+      targetConcept: this.normalizeConcept(c.targetConcept, 'target'),
+      connectionType: c.connectionType || 'shared-structure',
+      similarityScore: c.similarityScore ?? 3,
+      explanation: c.explanation || 'Connection explanation',
+      confidence: c.confidence || 'medium',
+      potentialApplication: c.potentialApplication,
+    };
+  }
+
+  private normalizeConcept(
+    concept: unknown,
+    prefix: string
+  ): Record<string, unknown> {
+    if (!concept || typeof concept !== 'object') {
+      return this.createFallbackConcept(prefix);
+    }
+
+    const c = concept as Record<string, unknown>;
+    return {
+      id: c.id || `${prefix}-concept`,
+      name: c.name || c.title || 'Unknown',
+      domain: c.domain || 'other',
+      description: c.description || '',
+      type: c.type || 'theory',
+      relatedConcepts: Array.isArray(c.relatedConcepts)
+        ? c.relatedConcepts
+        : [],
+      sources: Array.isArray(c.sources)
+        ? c.sources.map((s, i) => this.normalizeSource(s, i))
+        : [],
+    };
+  }
+
+  private createFallbackConcept(prefix: string): Record<string, unknown> {
+    return {
+      id: `${prefix}-fallback`,
+      name: 'Unknown',
+      domain: 'other',
+      description: 'Concept details not provided',
+      type: 'theory',
+      relatedConcepts: [],
+      sources: [],
+    };
+  }
+
+  private normalizeCitations(citations: unknown): Record<string, unknown>[] {
+    if (!Array.isArray(citations)) return [];
+
+    return citations.map((c, i) => {
+      if (typeof c === 'string') {
+        return {
+          id: `cit-${i + 1}`,
+          type: 'llm-knowledge',
+          title: c,
+          relevance: 'Related',
+          verified: false,
+        };
+      }
+      if (c && typeof c === 'object') {
+        const obj = c as Record<string, unknown>;
+        return {
+          id: obj.id || `cit-${i + 1}`,
+          type: obj.type || 'llm-knowledge',
+          title: obj.title || 'Unknown',
+          relevance: obj.relevance || 'Related',
+          verified: obj.verified ?? false,
+          authors: obj.authors,
+          year: obj.year,
+          venue: obj.venue,
+          url: obj.url,
+          doi: obj.doi,
+        };
+      }
+      return {
+        id: `cit-${i + 1}`,
+        type: 'llm-knowledge',
+        title: String(c),
+        relevance: 'Related',
+        verified: false,
+      };
+    });
+  }
+
+  private normalizeExperiment(
+    exp: unknown
+  ): Record<string, unknown> | undefined {
+    if (!exp || typeof exp !== 'object') return undefined;
+
+    const e = exp as Record<string, unknown>;
+
+    // Map LLM field names to schema field names
+    // LLM returns: method, metrics, timeline, requirements
+    // Schema expects: title, objective, methodology, expectedOutcome, resourceEstimate, successCriteria
+    const title =
+      e.title ||
+      (typeof e.method === 'string' ? this.extractExperimentTitle(e.method) : 'Experiment');
+
+    const methodology = e.methodology || e.method || 'TBD';
+
+    const objective =
+      e.objective ||
+      (typeof e.requirements === 'string' ? e.requirements : 'Test hypothesis');
+
+    const expectedOutcome =
+      e.expectedOutcome ||
+      (Array.isArray(e.metrics) ? `Measure: ${(e.metrics as string[]).join(', ')}` : 'TBD');
+
+    const successCriteria = Array.isArray(e.successCriteria)
+      ? e.successCriteria
+      : Array.isArray(e.metrics)
+        ? e.metrics
+        : ['TBD'];
+
+    return {
+      title,
+      objective,
+      methodology,
+      expectedOutcome,
+      resourceEstimate: this.normalizeResourceEstimate(e.resourceEstimate, e),
+      successCriteria,
+    };
+  }
+
+  private extractExperimentTitle(method: string): string {
+    // Extract a short title from the method description
+    // Take first clause or truncate at reasonable length
+    const firstClause = method.split(',')[0].split('.')[0];
+    if (firstClause.length <= 60) return firstClause;
+    return firstClause.substring(0, 57) + '...';
+  }
+
+  private normalizeResourceEstimate(
+    res: unknown,
+    experiment?: Record<string, unknown>
+  ): Record<string, unknown> {
+    // Try to parse timeline from experiment if resourceEstimate not provided
+    let timeMonths = 6;
+    if (res && typeof res === 'object') {
+      const r = res as Record<string, unknown>;
+      if (typeof r.timeMonths === 'number') {
+        timeMonths = r.timeMonths;
+      }
+    } else if (experiment && typeof experiment.timeline === 'string') {
+      timeMonths = this.parseTimelineToMonths(experiment.timeline);
+    }
+
+    if (res && typeof res === 'object') {
+      const r = res as Record<string, unknown>;
+      return {
+        timeMonths,
+        budgetUSD: r.budgetUSD || '$100K-$500K',
+        expertise: Array.isArray(r.expertise) ? r.expertise : ['Research'],
+      };
+    }
+    return {
+      timeMonths,
+      budgetUSD: '$100K-$500K',
+      expertise: ['Research'],
+    };
+  }
+
+  private parseTimelineToMonths(timeline: string): number {
+    // Parse strings like "6 months", "12 months", "18 months"
+    const match = timeline.match(/(\d+)\s*months?/i);
+    if (match) {
+      return parseInt(match[1], 10);
+    }
+    // Try parsing year-based strings like "1 year", "2 years"
+    const yearMatch = timeline.match(/(\d+)\s*years?/i);
+    if (yearMatch) {
+      return parseInt(yearMatch[1], 10) * 12;
+    }
+    return 6; // default
+  }
+
+  private normalizeSource(
+    source: unknown,
+    index: number
+  ): Record<string, unknown> {
+    if (typeof source === 'string') {
+      return {
+        id: `src-${index}`,
+        type: 'llm-knowledge',
+        title: source,
+        relevance: 'Related',
+        verified: false,
+      };
+    }
+    if (source && typeof source === 'object') {
+      const obj = source as Record<string, unknown>;
+      return {
+        id: obj.id || `src-${index}`,
+        type: obj.type || 'llm-knowledge',
+        title: obj.title || 'Unknown',
+        relevance: obj.relevance || 'Related',
+        verified: obj.verified ?? false,
+      };
+    }
+    return {
+      id: `src-${index}`,
+      type: 'llm-knowledge',
+      title: String(source),
+      relevance: 'Related',
+      verified: false,
+    };
   }
 }

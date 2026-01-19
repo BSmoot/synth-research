@@ -41,6 +41,9 @@ synth "Your research question here"
 # Specify target domain
 synth "Question" --domain=computational-biology
 
+# Save results to file
+synth "Question" --output=results/my-research.txt
+
 # Enable trace output (saves detailed LLM inputs/outputs)
 synth "Question" --trace --trace-dir=./my-traces
 
@@ -48,14 +51,15 @@ synth "Question" --trace --trace-dir=./my-traces
 synth "Question" --max-tokens=50000
 
 # All options
-synth "Question" --domain=ml-ai --trace --max-tokens=100000
+synth "Question" --domain=ml-ai --trace --output=results/output.txt
 ```
 
 ### Available Options
 
 | Option | Description |
 |--------|-------------|
-| `--domain=<domain>` | Target domain: `computational-biology`, `materials-science`, `ml-ai` |
+| `--domain=<domain>` | Target domain (see Supported Domains below) |
+| `--output=<file>` | Save results to file (in addition to console output) |
 | `--trace` | Enable detailed trace output to disk |
 | `--trace-dir=<path>` | Trace output directory (default: `./traces`) |
 | `--max-tokens=<num>` | Token budget cap (fails if exceeded) |
@@ -300,15 +304,22 @@ npm run dev -- "Your query"
 
 | Domain | Key Areas |
 |--------|-----------|
-| **Computational Biology** | Genomics, proteomics, drug discovery, CRISPR, systems biology |
-| **Materials Science** | Nanomaterials, polymers, semiconductors, biomaterials |
-| **ML/AI** | Deep learning, reinforcement learning, NLP, computer vision |
+| `computational-biology` | Genomics, proteomics, drug discovery, CRISPR, systems biology |
+| `materials-science` | Nanomaterials, polymers, semiconductors, biomaterials |
+| `ml-ai` | Deep learning, reinforcement learning, NLP, computer vision |
+| `economics-finance` | Market dynamics, behavioral economics, financial modeling |
+| `social-systems` | Network analysis, collective behavior, institutional design |
+| `physics-engineering` | Quantum systems, thermodynamics, control theory |
+| `climate-environment` | Earth systems, sustainability, ecological modeling |
+| `healthcare-medicine` | Clinical research, epidemiology, health systems |
+| `cognitive-science` | Neuroscience, psychology, decision-making |
+| `information-systems` | Distributed systems, cryptography, data architecture |
+| `other` | Interdisciplinary or unlisted domains |
 
 ## Limitations
 
 - **Citation verification**: Citations marked as `llm-knowledge` should be independently verified. Automated citation verification is planned for v1.1.
 - **Novelty checking**: The system cannot guarantee a hypothesis hasn't been published
-- **Domain coverage**: Currently limited to 3 domains
 - **No live experiments**: Generates hypotheses only, cannot execute research
 
 ## Architecture Decisions
@@ -318,9 +329,9 @@ See `docs/architecture/` for detailed ADRs:
 - ADR-002: Agent Topology
 - ADR-003: Knowledge Representation
 - ADR-004: Hypothesis Scoring
-- ADR-005: Timeout and Circuit Breaker Strategy (Proposed)
-- ADR-006: Parallel Hypothesis Evaluation (Proposed)
-- ADR-007: Evidence Gatherer Scope (Proposed)
+- ADR-005: Timeout and Circuit Breaker Strategy
+- ADR-006: Parallel Hypothesis Evaluation
+- ADR-007: Evidence Gatherer Scope
 
 ## License
 

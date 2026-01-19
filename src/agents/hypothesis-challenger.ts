@@ -11,6 +11,7 @@ import {
   ScoredHypothesis,
   ScoredHypothesisSchema,
   HypothesisScores,
+  Verdict,
 } from '../types/index.js';
 import { z } from 'zod';
 
@@ -154,8 +155,10 @@ export class HypothesisChallengerAgent extends BaseAgent<
   private async evaluateSingle(hypotheses: Hypothesis[], signal?: AbortSignal): Promise<ChallengeResult> {
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt({ hypotheses });
+
+    // Use free-text JSON for complex schemas (tool_use times out with deeply nested schemas)
     const response = await this.callLLM(systemPrompt, userPrompt, { signal });
-    return this.parseResponse(response);
+    return this.parseResponse(response, hypotheses);
   }
 
   private async evaluateBatch(hypotheses: Hypothesis[], signal?: AbortSignal): Promise<BatchResult> {
@@ -351,9 +354,266 @@ Remember:
 Output ONLY valid JSON.`;
   }
 
-  protected parseResponse(response: string): ChallengeResult {
+  protected parseResponse(response: string, originalHypotheses: Hypothesis[]): ChallengeResult {
     const json = this.extractJSON(response);
     const parsed = JSON.parse(json);
+
+    // Create lookup map for original hypotheses
+    const hypothesisMap = new Map<string, Hypothesis>();
+    for (const h of originalHypotheses) {
+      hypothesisMap.set(h.id, h);
+    }
+
+    // Normalize scored hypotheses
+    if (parsed.scoredHypotheses) {
+      parsed.scoredHypotheses = parsed.scoredHypotheses.map(
+        (scored: Record<string, unknown>) =>
+          this.normalizeScoredHypothesis(scored, hypothesisMap)
+      );
+    }
+
+    // Normalize rejected hypotheses
+    if (parsed.rejected) {
+      parsed.rejected = parsed.rejected.map(
+        (rejected: Record<string, unknown>) =>
+          this.normalizeRejectedHypothesis(rejected, hypothesisMap)
+      );
+    }
+
     return ChallengeResultSchema.parse(parsed);
+  }
+
+  // ============================================================================
+  // Normalization Methods
+  // ============================================================================
+
+  private normalizeScoredHypothesis(
+    scored: Record<string, unknown>,
+    hypothesisMap: Map<string, Hypothesis>
+  ): Record<string, unknown> {
+    const id = scored.id as string;
+    const original = hypothesisMap.get(id);
+
+    if (!original) {
+      // If we can't find the original, try to construct a minimal valid object
+      return this.constructMinimalScoredHypothesis(scored);
+    }
+
+    // Merge original hypothesis data with scored data
+    return {
+      // All original hypothesis fields
+      id: original.id,
+      title: original.title,
+      statement: original.statement,
+      sourceDomain: original.sourceDomain,
+      targetDomain: original.targetDomain,
+      connection: original.connection,
+      components: original.components,
+      confidence: original.confidence,
+      citations: original.citations,
+      suggestedExperiment: original.suggestedExperiment,
+      generatedAt:
+        typeof original.generatedAt === 'string'
+          ? original.generatedAt
+          : (original.generatedAt as Date).toISOString(),
+      status: 'challenged',
+
+      // Scored fields (normalized)
+      scores: this.normalizeScores(scored.scores, scored),
+      verdict: this.normalizeVerdict(scored.verdict),
+      challengeNotes: this.normalizeChallengeNotes(scored.challengeNotes),
+    };
+  }
+
+  private normalizeRejectedHypothesis(
+    rejected: Record<string, unknown>,
+    hypothesisMap: Map<string, Hypothesis>
+  ): Record<string, unknown> {
+    const hypothesis = rejected.hypothesis as Record<string, unknown> | undefined;
+    const id = hypothesis?.id as string | undefined;
+    const original = id ? hypothesisMap.get(id) : undefined;
+
+    return {
+      hypothesis: original || hypothesis || { id: 'unknown' },
+      scores: this.normalizeScores(rejected.scores, rejected),
+      verdict: 'fail' as const,
+      rejectionReasons: Array.isArray(rejected.rejectionReasons)
+        ? rejected.rejectionReasons
+        : [String(rejected.rejectionReasons || 'Rejected')],
+    };
+  }
+
+  private constructMinimalScoredHypothesis(
+    scored: Record<string, unknown>
+  ): Record<string, unknown> {
+    return {
+      id: scored.id || 'unknown',
+      title: scored.title || 'Unknown Hypothesis',
+      statement: scored.statement || '',
+      sourceDomain: scored.sourceDomain || 'other',
+      targetDomain: scored.targetDomain || 'other',
+      connection: {
+        id: 'conn-fallback',
+        sourceConcept: this.createFallbackConcept('source'),
+        targetConcept: this.createFallbackConcept('target'),
+        connectionType: 'shared-structure',
+        similarityScore: 3,
+        explanation: 'Connection details not available',
+        confidence: 'medium',
+      },
+      components: scored.components || {
+        insight: '',
+        application: '',
+        mechanism: '',
+        prediction: '',
+      },
+      confidence: scored.confidence || 'medium',
+      citations: [],
+      generatedAt: new Date().toISOString(),
+      status: 'challenged',
+      scores: this.normalizeScores(scored.scores, scored),
+      verdict: this.normalizeVerdict(scored.verdict),
+      challengeNotes: this.normalizeChallengeNotes(scored.challengeNotes),
+    };
+  }
+
+  private createFallbackConcept(prefix: string): Record<string, unknown> {
+    return {
+      id: `${prefix}-fallback`,
+      name: 'Unknown',
+      domain: 'other',
+      description: 'Concept details not provided',
+      type: 'theory',
+      relatedConcepts: [],
+      sources: [],
+    };
+  }
+
+  private normalizeScores(
+    scores: unknown,
+    scored: Record<string, unknown>
+  ): HypothesisScores {
+    const defaultWeights = {
+      specificity: 0.25,
+      novelty: 0.2,
+      connectionValidity: 0.25,
+      feasibility: 0.15,
+      grounding: 0.15,
+    };
+
+    if (!scores || typeof scores !== 'object') {
+      // If no scores object, return defaults
+      return {
+        specificity: { score: 3, weight: 0.25, explanation: 'Not evaluated' },
+        novelty: { score: 3, weight: 0.2, explanation: 'Not evaluated' },
+        connectionValidity: { score: 3, weight: 0.25, explanation: 'Not evaluated' },
+        feasibility: { score: 3, weight: 0.15, explanation: 'Not evaluated' },
+        grounding: { score: 3, weight: 0.15, explanation: 'Not evaluated' },
+        composite: 3.0,
+      };
+    }
+
+    const s = scores as Record<string, unknown>;
+
+    // Normalize each dimension
+    const specificity = this.normalizeDimensionScore(
+      s.specificity,
+      defaultWeights.specificity
+    );
+    const novelty = this.normalizeDimensionScore(
+      s.novelty,
+      defaultWeights.novelty
+    );
+    const connectionValidity = this.normalizeDimensionScore(
+      s.connectionValidity,
+      defaultWeights.connectionValidity
+    );
+    const feasibility = this.normalizeDimensionScore(
+      s.feasibility,
+      defaultWeights.feasibility
+    );
+    const grounding = this.normalizeDimensionScore(
+      s.grounding,
+      defaultWeights.grounding
+    );
+
+    // Get composite score from various possible locations
+    let composite =
+      typeof s.composite === 'number'
+        ? s.composite
+        : typeof scored.compositeScore === 'number'
+          ? scored.compositeScore
+          : this.calculateComposite({
+              specificity,
+              novelty,
+              connectionValidity,
+              feasibility,
+              grounding,
+            });
+
+    return {
+      specificity,
+      novelty,
+      connectionValidity,
+      feasibility,
+      grounding,
+      composite,
+    };
+  }
+
+  private normalizeDimensionScore(
+    dim: unknown,
+    defaultWeight: number
+  ): { score: number; weight: number; explanation: string } {
+    if (!dim || typeof dim !== 'object') {
+      return {
+        score: 3,
+        weight: defaultWeight,
+        explanation: 'Not evaluated',
+      };
+    }
+
+    const d = dim as Record<string, unknown>;
+    return {
+      score: typeof d.score === 'number' ? d.score : 3,
+      weight: typeof d.weight === 'number' ? d.weight : defaultWeight,
+      explanation: typeof d.explanation === 'string' ? d.explanation : '',
+    };
+  }
+
+  private calculateComposite(scores: {
+    specificity: { score: number; weight: number };
+    novelty: { score: number; weight: number };
+    connectionValidity: { score: number; weight: number };
+    feasibility: { score: number; weight: number };
+    grounding: { score: number; weight: number };
+  }): number {
+    return (
+      scores.specificity.score * scores.specificity.weight +
+      scores.novelty.score * scores.novelty.weight +
+      scores.connectionValidity.score * scores.connectionValidity.weight +
+      scores.feasibility.score * scores.feasibility.weight +
+      scores.grounding.score * scores.grounding.weight
+    );
+  }
+
+  private normalizeVerdict(verdict: unknown): Verdict {
+    if (typeof verdict === 'string') {
+      const lower = verdict.toLowerCase();
+      if (lower === 'pass') return 'pass';
+      if (lower === 'borderline') return 'borderline';
+      if (lower === 'fail') return 'fail';
+    }
+    return 'borderline';
+  }
+
+  private normalizeChallengeNotes(notes: unknown): string[] {
+    if (Array.isArray(notes)) {
+      return notes.map((n) => String(n));
+    }
+    if (typeof notes === 'string') {
+      return [notes];
+    }
+    return [];
   }
 }

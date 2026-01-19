@@ -7,6 +7,8 @@
 // Load environment variables from .env file
 import 'dotenv/config';
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import ora from 'ora';
 import { SynthesisOrchestrator } from './orchestrator/index.js';
 import { SUPPORTED_DOMAINS, DOMAIN_METADATA, DomainTag } from './types/index.js';
@@ -51,6 +53,10 @@ async function main(): Promise<void> {
   // Parse token budget flag
   const maxTokensArg = args.find((a) => a.startsWith('--max-tokens='));
   const maxTokenBudget = maxTokensArg ? parseInt(maxTokensArg.split('=')[1], 10) : undefined;
+
+  // Parse output file flag
+  const outputArg = args.find((a) => a.startsWith('--output='));
+  const outputFile = outputArg ? outputArg.split('=')[1] : undefined;
 
   // Get query (all non-flag arguments)
   const query = args
@@ -119,8 +125,22 @@ async function main(): Promise<void> {
 
     spinner.succeed('Synthesis complete');
 
-    // Print results
-    printResults(result);
+    // Format and output results
+    const formattedResults = formatResults(result);
+
+    // Write to file if output flag provided
+    if (outputFile) {
+      const outputPath = path.resolve(outputFile);
+      const outputDir = path.dirname(outputPath);
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      fs.writeFileSync(outputPath, formattedResults, 'utf-8');
+      console.log(`\nResults saved to: ${outputPath}`);
+    }
+
+    // Always print to console
+    console.log(formattedResults);
   } catch (error) {
     spinner.fail('Synthesis failed');
     console.error('\nError during synthesis:', error);
@@ -141,6 +161,7 @@ USAGE:
 
 OPTIONS:
   --domain=<domain>     Target domain for analysis
+  --output=<file>       Save results to file (in addition to console output)
   --trace               Enable detailed trace output
   --trace-dir=<path>    Directory for trace files (default: ./traces)
   --max-tokens=<num>    Maximum token budget for pipeline
@@ -153,14 +174,15 @@ SUPPORTED DOMAINS:
 EXAMPLES:
   synth "How can we improve CRISPR guide RNA design?"
   synth "Applications of transformers in drug discovery" --domain=computational-biology
-  synth "Novel approaches to room-temperature superconductors" --trace --max-tokens=50000
+  synth "Novel approaches to room-temperature superconductors" --output=results/output.txt
+  synth "Quantum computing applications" --trace --output=results/quantum.txt
 
 ENVIRONMENT:
   ANTHROPIC_API_KEY  Required. Your Anthropic API key.
 `);
 }
 
-function printResults(result: {
+interface ResultsType {
   traceId: string;
   query: string;
   domain: string;
@@ -209,106 +231,112 @@ function printResults(result: {
     };
   };
   warnings: string[];
-}): void {
-  console.log('\n========================================');
-  console.log('  RESULTS');
-  console.log('========================================\n');
+}
 
-  console.log(`Trace ID: ${result.traceId}`);
-  console.log(`Domain: ${result.domain}`);
-  console.log('');
+function formatResults(result: ResultsType): string {
+  const lines: string[] = [];
+
+  lines.push('\n========================================');
+  lines.push('  RESULTS');
+  lines.push('========================================\n');
+
+  lines.push(`Trace ID: ${result.traceId}`);
+  lines.push(`Domain: ${result.domain}`);
+  lines.push('');
 
   // Summary
-  console.log('SUMMARY:');
-  console.log(`  Generated: ${result.metadata.totalGenerated} hypotheses`);
-  console.log(`  Validated: ${result.metadata.totalValidated}`);
-  console.log(`  Rejected: ${result.metadata.totalRejected}`);
-  console.log(`  Time: ${(result.metadata.executionTimeMs / 1000).toFixed(1)}s`);
-  console.log('');
+  lines.push('SUMMARY:');
+  lines.push(`  Generated: ${result.metadata.totalGenerated} hypotheses`);
+  lines.push(`  Validated: ${result.metadata.totalValidated}`);
+  lines.push(`  Rejected: ${result.metadata.totalRejected}`);
+  lines.push(`  Time: ${(result.metadata.executionTimeMs / 1000).toFixed(1)}s`);
+  lines.push('');
 
   // Token usage (if available)
   if (result.metadata.tokenUsage) {
-    console.log('TOKEN USAGE:');
-    console.log(`  Input tokens: ${result.metadata.tokenUsage.inputTokens.toLocaleString()}`);
-    console.log(`  Output tokens: ${result.metadata.tokenUsage.outputTokens.toLocaleString()}`);
-    console.log(`  Total tokens: ${result.metadata.tokenUsage.totalTokens.toLocaleString()}`);
+    lines.push('TOKEN USAGE:');
+    lines.push(`  Input tokens: ${result.metadata.tokenUsage.inputTokens.toLocaleString()}`);
+    lines.push(`  Output tokens: ${result.metadata.tokenUsage.outputTokens.toLocaleString()}`);
+    lines.push(`  Total tokens: ${result.metadata.tokenUsage.totalTokens.toLocaleString()}`);
     if (result.metadata.costEstimate) {
-      console.log(`  Estimated cost: $${result.metadata.costEstimate.usd.toFixed(4)}`);
+      lines.push(`  Estimated cost: $${result.metadata.costEstimate.usd.toFixed(4)}`);
     }
-    console.log('');
+    lines.push('');
   }
 
   // Stages
-  console.log('PIPELINE STAGES:');
+  lines.push('PIPELINE STAGES:');
   for (const stage of result.metadata.stages) {
     const status = stage.status === 'success' ? '✓' : stage.status === 'error' ? '✗' : '~';
-    console.log(`  ${status} ${stage.stage}: ${(stage.durationMs / 1000).toFixed(1)}s`);
+    lines.push(`  ${status} ${stage.stage}: ${(stage.durationMs / 1000).toFixed(1)}s`);
   }
-  console.log('');
+  lines.push('');
 
   // Warnings
   if (result.warnings.length > 0) {
-    console.log('WARNINGS:');
+    lines.push('WARNINGS:');
     for (const warning of result.warnings) {
-      console.log(`  ⚠ ${warning}`);
+      lines.push(`  ⚠ ${warning}`);
     }
-    console.log('');
+    lines.push('');
   }
 
   // Hypotheses
   if (result.hypotheses.length === 0) {
-    console.log('No validated hypotheses generated.');
-    return;
+    lines.push('No validated hypotheses generated.');
+    return lines.join('\n');
   }
 
-  console.log('----------------------------------------');
-  console.log('  VALIDATED HYPOTHESES');
-  console.log('----------------------------------------\n');
+  lines.push('----------------------------------------');
+  lines.push('  VALIDATED HYPOTHESES');
+  lines.push('----------------------------------------\n');
 
   for (const hypothesis of result.hypotheses) {
-    console.log(`#${hypothesis.rank}: ${hypothesis.title}`);
-    console.log(`Verdict: ${hypothesis.verdict.toUpperCase()} (Score: ${hypothesis.scores.composite.toFixed(2)})`);
-    console.log('');
-    console.log(`Statement: ${hypothesis.statement}`);
-    console.log('');
+    lines.push(`#${hypothesis.rank}: ${hypothesis.title}`);
+    lines.push(`Verdict: ${hypothesis.verdict.toUpperCase()} (Score: ${hypothesis.scores.composite.toFixed(2)})`);
+    lines.push('');
+    lines.push(`Statement: ${hypothesis.statement}`);
+    lines.push('');
 
-    console.log('Scores:');
-    console.log(`  Specificity: ${hypothesis.scores.specificity.score}/5`);
-    console.log(`  Novelty: ${hypothesis.scores.novelty.score}/5`);
-    console.log(`  Connection Validity: ${hypothesis.scores.connectionValidity.score}/5`);
-    console.log(`  Feasibility: ${hypothesis.scores.feasibility.score}/5`);
-    console.log(`  Grounding: ${hypothesis.scores.grounding.score}/5`);
-    console.log('');
+    lines.push('Scores:');
+    lines.push(`  Specificity: ${hypothesis.scores.specificity.score}/5`);
+    lines.push(`  Novelty: ${hypothesis.scores.novelty.score}/5`);
+    lines.push(`  Connection Validity: ${hypothesis.scores.connectionValidity.score}/5`);
+    lines.push(`  Feasibility: ${hypothesis.scores.feasibility.score}/5`);
+    lines.push(`  Grounding: ${hypothesis.scores.grounding.score}/5`);
+    lines.push('');
 
-    console.log('Components:');
-    console.log(`  Insight: ${hypothesis.components.insight}`);
-    console.log(`  Application: ${hypothesis.components.application}`);
-    console.log(`  Mechanism: ${hypothesis.components.mechanism}`);
-    console.log(`  Prediction: ${hypothesis.components.prediction}`);
-    console.log('');
+    lines.push('Components:');
+    lines.push(`  Insight: ${hypothesis.components.insight}`);
+    lines.push(`  Application: ${hypothesis.components.application}`);
+    lines.push(`  Mechanism: ${hypothesis.components.mechanism}`);
+    lines.push(`  Prediction: ${hypothesis.components.prediction}`);
+    lines.push('');
 
     if (hypothesis.citations.length > 0) {
-      console.log('Citations:');
+      lines.push('Citations:');
       for (const citation of hypothesis.citations) {
-        console.log(`  - ${citation.title} (${citation.type})`);
+        lines.push(`  - ${citation.title} (${citation.type})`);
       }
-      console.log('');
+      lines.push('');
     }
 
     if (hypothesis.suggestedExperiment) {
-      console.log('Suggested Experiment:');
-      console.log(`  ${hypothesis.suggestedExperiment.title}`);
-      console.log(`  Methodology: ${hypothesis.suggestedExperiment.methodology}`);
-      console.log(`  Timeline: ${hypothesis.suggestedExperiment.resourceEstimate.timeMonths} months`);
-      console.log(`  Budget: ${hypothesis.suggestedExperiment.resourceEstimate.budgetUSD}`);
-      console.log('');
+      lines.push('Suggested Experiment:');
+      lines.push(`  ${hypothesis.suggestedExperiment.title}`);
+      lines.push(`  Methodology: ${hypothesis.suggestedExperiment.methodology}`);
+      lines.push(`  Timeline: ${hypothesis.suggestedExperiment.resourceEstimate.timeMonths} months`);
+      lines.push(`  Budget: ${hypothesis.suggestedExperiment.resourceEstimate.budgetUSD}`);
+      lines.push('');
     }
 
-    console.log('----------------------------------------\n');
+    lines.push('----------------------------------------\n');
   }
 
-  console.log('Note: All hypotheses require independent verification.');
-  console.log('Citations marked as "llm-knowledge" should be verified before use.');
+  lines.push('Note: All hypotheses require independent verification.');
+  lines.push('Citations marked as "llm-knowledge" should be verified before use.');
+
+  return lines.join('\n');
 }
 
 // ============================================================================

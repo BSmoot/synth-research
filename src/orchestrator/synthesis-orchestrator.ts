@@ -20,7 +20,9 @@ import {
 } from '../types/index.js';
 import { TraceWriter } from '../tracing/trace-writer.js';
 import type { TraceMetadata } from '../types/trace.js';
+import { SCHEMA_VERSION } from '../types/schema-version.js';
 import { CircuitBreaker } from '../resilience/circuit-breaker.js';
+import { AgentCircuitBreakerRegistry } from '../resilience/agent-circuit-breaker.js';
 import { TimeoutError, CircuitOpenError } from '../types/errors.js';
 
 export interface OrchestratorConfig {
@@ -36,6 +38,7 @@ export interface OrchestratorConfig {
     enabled?: boolean;
     failureThreshold?: number;
     resetTimeoutMs?: number;
+    perAgent?: boolean;
   };
 }
 
@@ -50,6 +53,7 @@ export class SynthesisOrchestrator {
   private readonly client: Anthropic;
   private readonly config: OrchestratorConfig;
   private readonly circuitBreaker?: CircuitBreaker;
+  private readonly agentCircuitBreakerRegistry?: AgentCircuitBreakerRegistry;
 
   // Agents
   private readonly domainAnalyst: DomainAnalystAgent;
@@ -69,16 +73,26 @@ export class SynthesisOrchestrator {
         enabled: config.circuitBreaker.enabled ?? false,
         failureThreshold: config.circuitBreaker.failureThreshold ?? 5,
         resetTimeoutMs: config.circuitBreaker.resetTimeoutMs ?? 30000,
+        perAgent: config.circuitBreaker.perAgent ?? false,
       } : undefined,
     };
 
-    // Initialize circuit breaker if enabled
+    // Initialize circuit breaker(s) if enabled
     if (this.config.circuitBreaker?.enabled) {
-      this.circuitBreaker = new CircuitBreaker({
-        failureThreshold: this.config.circuitBreaker.failureThreshold!,
-        resetTimeoutMs: this.config.circuitBreaker.resetTimeoutMs!,
-        name: 'synthesis-orchestrator',
-      });
+      if (this.config.circuitBreaker.perAgent) {
+        // Per-agent circuit breakers
+        this.agentCircuitBreakerRegistry = new AgentCircuitBreakerRegistry({
+          failureThreshold: this.config.circuitBreaker.failureThreshold!,
+          resetTimeoutMs: this.config.circuitBreaker.resetTimeoutMs!,
+        });
+      } else {
+        // Single shared circuit breaker
+        this.circuitBreaker = new CircuitBreaker({
+          failureThreshold: this.config.circuitBreaker.failureThreshold!,
+          resetTimeoutMs: this.config.circuitBreaker.resetTimeoutMs!,
+          name: 'synthesis-orchestrator',
+        });
+      }
     }
 
     // Initialize Anthropic client
@@ -173,12 +187,15 @@ export class SynthesisOrchestrator {
     this.reportProgress('domain-analysis', 'Analyzing domain concepts and methods...');
 
     try {
-      const analysis = await this.withRetry((signal) =>
-        this.domainAnalyst.execute({
-          query: context.query.text,
-          domain: context.domain,
-          depth: 'standard',
-        }, signal)
+      const analysis = await this.withRetry(
+        (signal) =>
+          this.domainAnalyst.execute({
+            query: context.query.text,
+            domain: context.domain,
+            depth: 'standard',
+          }, signal),
+        this.config.maxRetries,
+        'domain-analyst'
       );
 
       context.setAnalysis(analysis);
@@ -220,12 +237,15 @@ export class SynthesisOrchestrator {
         (d) => d !== context.domain
       );
 
-      const result = await this.withRetry((signal) =>
-        this.crossPollinator.execute({
-          sourceDomain: context.analysis!,
-          targetDomains,
-          maxConnections: 10,
-        }, signal)
+      const result = await this.withRetry(
+        (signal) =>
+          this.crossPollinator.execute({
+            sourceDomain: context.analysis!,
+            targetDomains,
+            maxConnections: 10,
+          }, signal),
+        this.config.maxRetries,
+        'cross-pollinator'
       );
 
       context.addConnections(result.connections);
@@ -268,12 +288,15 @@ export class SynthesisOrchestrator {
     }
 
     try {
-      const result = await this.withRetry((signal) =>
-        this.hypothesisSynthesizer.execute({
-          connections: context.connections,
-          context: context.getSummary(),
-          maxHypotheses: 5,
-        }, signal)
+      const result = await this.withRetry(
+        (signal) =>
+          this.hypothesisSynthesizer.execute({
+            connections: context.connections,
+            context: context.getSummary(),
+            maxHypotheses: 5,
+          }, signal),
+        this.config.maxRetries,
+        'hypothesis-synthesizer'
       );
 
       context.addHypotheses(result.hypotheses);
@@ -316,10 +339,16 @@ export class SynthesisOrchestrator {
     }
 
     try {
-      const result = await this.withRetry((signal) =>
-        this.hypothesisChallenger.execute({
-          hypotheses: context.hypotheses,
-        }, signal)
+      const result = await this.withRetry(
+        (signal) =>
+          this.hypothesisChallenger.execute(
+            {
+              hypotheses: context.hypotheses,
+            },
+            signal
+          ),
+        this.config.maxRetries,
+        'hypothesis-challenger'
       );
 
       context.setScoredHypotheses(result.scoredHypotheses);
@@ -419,6 +448,7 @@ export class SynthesisOrchestrator {
     const cost = context.calculateCost();
 
     const metadata: TraceMetadata = {
+      schemaVersion: SCHEMA_VERSION,
       traceId: context.traceId,
       query: context.query.text,
       domain: context.domain,
@@ -559,15 +589,29 @@ export class SynthesisOrchestrator {
   }
 
   /**
+   * Get the circuit breaker for a given agent (per-agent or shared)
+   */
+  private getCircuitBreaker(agentName?: string): CircuitBreaker | undefined {
+    if (this.agentCircuitBreakerRegistry && agentName) {
+      return this.agentCircuitBreakerRegistry.getBreaker(agentName);
+    }
+    return this.circuitBreaker;
+  }
+
+  /**
    * Retry helper with exponential backoff and timeout enforcement
    */
   private async withRetry<T>(
     fn: (signal: AbortSignal) => Promise<T>,
-    retries = this.config.maxRetries ?? 2
+    retries = this.config.maxRetries ?? 2,
+    agentName?: string
   ): Promise<T> {
+    // Get the appropriate circuit breaker (per-agent or shared)
+    const breaker = this.getCircuitBreaker(agentName);
+
     // Check circuit breaker first
-    if (this.circuitBreaker && !this.circuitBreaker.canExecute()) {
-      throw new CircuitOpenError('synthesis-orchestrator');
+    if (breaker && !breaker.canExecute()) {
+      throw new CircuitOpenError(agentName ?? 'synthesis-orchestrator');
     }
 
     let lastError: Error | undefined;
@@ -584,7 +628,7 @@ export class SynthesisOrchestrator {
           clearTimeout(timeoutId);
 
           // Record success for circuit breaker
-          this.circuitBreaker?.recordSuccess();
+          breaker?.recordSuccess();
           return result;
         } catch (error) {
           clearTimeout(timeoutId);
@@ -592,7 +636,7 @@ export class SynthesisOrchestrator {
           // Handle timeout/abort errors
           if (error instanceof Error && error.name === 'AbortError') {
             const timeoutError = new TimeoutError('llm-call', timeoutMs);
-            this.circuitBreaker?.recordFailure();
+            breaker?.recordFailure();
             throw timeoutError;
           }
           throw error;
@@ -602,12 +646,12 @@ export class SynthesisOrchestrator {
 
         // Don't retry on timeout or circuit open errors
         if (error instanceof TimeoutError || error instanceof CircuitOpenError) {
-          this.circuitBreaker?.recordFailure();
+          breaker?.recordFailure();
           throw error;
         }
 
         // Record failure for circuit breaker
-        this.circuitBreaker?.recordFailure();
+        breaker?.recordFailure();
 
         if (attempt < retries) {
           const delay = 1000 * Math.pow(2, attempt);

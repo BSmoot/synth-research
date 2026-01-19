@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import type winston from 'winston';
 import type {
   UserQuery,
   DomainAnalysis,
@@ -21,6 +22,7 @@ import type {
 } from '../types/tokens.js';
 import type { TraceEntry } from '../types/trace.js';
 import type { TokenTracker, TraceCollector } from '../agents/base-agent.js';
+import { createChildLogger } from '../logging/logger.js';
 
 export interface ContextSummary {
   query: string;
@@ -42,6 +44,7 @@ export class PipelineContext implements TokenTracker, TraceCollector {
   public readonly query: UserQuery;
   public readonly domain: DomainTag;
 
+  private readonly _logger: winston.Logger;
   private _analysis: DomainAnalysis | null = null;
   private _connections: CrossDomainConnection[] = [];
   private _hypotheses: Hypothesis[] = [];
@@ -56,6 +59,7 @@ export class PipelineContext implements TokenTracker, TraceCollector {
     this.startTime = new Date();
     this.query = query;
     this.domain = domain;
+    this._logger = createChildLogger({ traceId: this.traceId, domain });
   }
 
   // ============================================================================
@@ -240,10 +244,41 @@ export class PipelineContext implements TokenTracker, TraceCollector {
   }
 
   // ============================================================================
-  // Logging
+  // Logging (Winston structured logging)
   // ============================================================================
 
-  log(message: string): void {
-    console.log(`[${this.traceId.slice(0, 8)}] ${message}`);
+  /**
+   * Log at info level (backward compatible with original log() method)
+   */
+  log(message: string, meta?: object): void {
+    this._logger.info(message, meta);
+  }
+
+  /**
+   * Log at info level with optional metadata
+   */
+  info(message: string, meta?: object): void {
+    this._logger.info(message, meta);
+  }
+
+  /**
+   * Log at warn level with optional metadata
+   */
+  warn(message: string, meta?: object): void {
+    this._logger.warn(message, meta);
+  }
+
+  /**
+   * Log at error level with optional metadata
+   */
+  error(message: string, meta?: object): void {
+    this._logger.error(message, meta);
+  }
+
+  /**
+   * Log at debug level with optional metadata
+   */
+  debug(message: string, meta?: object): void {
+    this._logger.debug(message, meta);
   }
 }

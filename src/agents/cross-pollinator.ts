@@ -3,6 +3,7 @@
  * Finds analogous problems and methods across research domains
  */
 
+import { randomUUID } from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { BaseAgent, AgentConfig } from './base-agent.js';
 import {
@@ -12,6 +13,8 @@ import {
   CrossPollinationResultSchema,
   DOMAIN_METADATA,
   normalizeDomainsInObject,
+  normalizeDomain,
+  ConceptType,
 } from '../types/index.js';
 
 export interface PollinationRequest {
@@ -39,8 +42,17 @@ export class CrossPollinatorAgent extends BaseAgent<
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt(input);
 
-    const response = await this.callLLM(systemPrompt, userPrompt, { signal });
-    return this.parseResponse(response);
+    // Use tool_use for guaranteed structured output
+    const result = await this.callLLMWithSchema(
+      systemPrompt,
+      userPrompt,
+      CrossPollinationResultSchema,
+      'submit_cross_pollination',
+      'Submit cross-domain connections with source/target concepts and similarity scores',
+      { signal }
+    );
+
+    return result;
   }
 
   protected buildSystemPrompt(): string {
@@ -156,17 +168,94 @@ Remember to output ONLY valid JSON.`;
     // Normalize all domain fields before validation
     parsed = normalizeDomainsInObject(parsed, 'other');
 
-    // Ensure IDs are present
+    // Normalize connections with full concept structure
     if (parsed.connections) {
       parsed.connections = parsed.connections.map(
         (c: Record<string, unknown>, i: number) => ({
           ...c,
           id: c.id || `conn-${i + 1}`,
+          sourceConcept: this.normalizeConcept(c.sourceConcept, 'other', 'theory'),
+          targetConcept: this.normalizeConcept(c.targetConcept, 'other', 'theory'),
         })
       );
     }
 
+    // Normalize summary.byTargetDomain keys
+    if (parsed.summary?.byTargetDomain) {
+      const normalized: Record<string, number> = {};
+      for (const [key, value] of Object.entries(parsed.summary.byTargetDomain)) {
+        const normalizedKey = normalizeDomain(key, 'other');
+        normalized[normalizedKey] = (normalized[normalizedKey] || 0) + (value as number);
+      }
+      parsed.summary.byTargetDomain = normalized;
+    }
+
     // Validate with Zod
     return CrossPollinationResultSchema.parse(parsed);
+  }
+
+  /**
+   * Normalize a concept object to have all required fields
+   */
+  private normalizeConcept(
+    concept: unknown,
+    fallbackDomain: DomainTag,
+    defaultType: ConceptType
+  ): Record<string, unknown> {
+    if (!concept || typeof concept !== 'object') {
+      return {
+        id: `concept-${randomUUID().slice(0, 8)}`,
+        name: 'Unknown',
+        domain: fallbackDomain,
+        description: '',
+        type: defaultType,
+        relatedConcepts: [],
+        sources: [],
+      };
+    }
+
+    const obj = concept as Record<string, unknown>;
+    return {
+      id: obj.id || `concept-${randomUUID().slice(0, 8)}`,
+      name: obj.name || obj.title || 'Unknown',
+      domain: normalizeDomain(obj.domain, fallbackDomain),
+      subDomain: obj.subdomain || obj.subDomain,
+      description: obj.description || '',
+      type: obj.type || defaultType,
+      relatedConcepts: Array.isArray(obj.relatedConcepts) ? obj.relatedConcepts : [],
+      sources: Array.isArray(obj.sources) ? obj.sources.map((s, i) => this.normalizeSource(s, i)) : [],
+    };
+  }
+
+  /**
+   * Normalize a source/citation object
+   */
+  private normalizeSource(source: unknown, index: number): Record<string, unknown> {
+    if (typeof source === 'string') {
+      return {
+        id: `src-${index}`,
+        type: 'llm-knowledge',
+        title: source,
+        relevance: 'Related',
+        verified: false,
+      };
+    }
+    if (source && typeof source === 'object') {
+      const obj = source as Record<string, unknown>;
+      return {
+        id: obj.id || `src-${index}`,
+        type: obj.type || 'llm-knowledge',
+        title: obj.title || 'Unknown',
+        relevance: obj.relevance || 'Related',
+        verified: obj.verified ?? false,
+      };
+    }
+    return {
+      id: `src-${index}`,
+      type: 'llm-knowledge',
+      title: String(source),
+      relevance: 'Related',
+      verified: false,
+    };
   }
 }
