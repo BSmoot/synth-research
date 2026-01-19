@@ -10,7 +10,7 @@ import { z } from 'zod';
 /**
  * Current schema version following semver (major.minor.patch)
  */
-export const SCHEMA_VERSION = '1.1.0' as const;
+export const SCHEMA_VERSION = '1.2.0' as const;
 
 /**
  * Zod schema for validating schema version metadata

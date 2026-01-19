@@ -19,6 +19,10 @@ export const DomainTagSchema = z.enum([
   'healthcare-medicine',
   'cognitive-science',
   'information-systems',
+  'mathematics',
+  'law-governance',
+  'anthropology-history',
+  'philosophy-ethics',
   'other',
 ]);
 
@@ -35,6 +39,10 @@ export const SUPPORTED_DOMAINS: DomainTag[] = [
   'healthcare-medicine',
   'cognitive-science',
   'information-systems',
+  'mathematics',
+  'law-governance',
+  'anthropology-history',
+  'philosophy-ethics',
   'other',
 ];
 
@@ -224,6 +232,82 @@ export const DOMAIN_METADATA: Record<DomainTag, DomainMetadata> = {
     ],
     majorConferences: ['SIGMOD', 'ICSE', 'CHI'],
   },
+  'mathematics': {
+    tag: 'mathematics',
+    name: 'Mathematics',
+    description: 'Pure and applied mathematics, mathematical theory',
+    subDomains: [
+      'topology',
+      'algebra',
+      'analysis',
+      'number-theory',
+      'game-theory',
+      'probability',
+      'statistics',
+    ],
+    keyJournals: [
+      'Annals of Mathematics',
+      'Journal of the American Mathematical Society',
+      'Inventiones Mathematicae',
+    ],
+    majorConferences: ['ICM', 'JMM', 'AMS'],
+  },
+  'law-governance': {
+    tag: 'law-governance',
+    name: 'Law and Governance',
+    description: 'Legal systems, regulatory frameworks, and governance structures',
+    subDomains: [
+      'constitutional-law',
+      'regulatory-policy',
+      'contract-theory',
+      'international-law',
+      'legal-institutions',
+      'governance-models',
+    ],
+    keyJournals: [
+      'Harvard Law Review',
+      'Yale Law Journal',
+      'Journal of Legal Studies',
+    ],
+    majorConferences: ['AALS', 'LSA', 'ICON-S'],
+  },
+  'anthropology-history': {
+    tag: 'anthropology-history',
+    name: 'Anthropology and History',
+    description: 'Human cultures, societies, and historical development',
+    subDomains: [
+      'cultural-anthropology',
+      'archaeology',
+      'historical-analysis',
+      'comparative-civilizations',
+      'ethnography',
+    ],
+    keyJournals: [
+      'American Anthropologist',
+      'American Historical Review',
+      'Current Anthropology',
+    ],
+    majorConferences: ['AAA', 'AHA', 'SAA'],
+  },
+  'philosophy-ethics': {
+    tag: 'philosophy-ethics',
+    name: 'Philosophy and Ethics',
+    description: 'Philosophical inquiry, ethics, and moral reasoning',
+    subDomains: [
+      'epistemology',
+      'moral-philosophy',
+      'political-philosophy',
+      'logic',
+      'decision-theory',
+      'ethics',
+    ],
+    keyJournals: [
+      'The Philosophical Review',
+      'Ethics',
+      'Journal of Philosophy',
+    ],
+    majorConferences: ['APA', 'PSA', 'ISHPSSB'],
+  },
   'other': {
     tag: 'other',
     name: 'Other / Interdisciplinary',
@@ -297,7 +381,6 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   'sociology': 'social-systems',
   'social-science': 'social-systems',
   'social science': 'social-systems',
-  'governance': 'social-systems',
   'policy': 'social-systems',
 
   // physics-engineering variations
@@ -344,6 +427,36 @@ export const DOMAIN_ALIASES: Record<string, DomainTag> = {
   'software': 'information-systems',
   'computer-science': 'information-systems',
   'computer science': 'information-systems',
+
+  // mathematics variations
+  'mathematics': 'mathematics',
+  'math': 'mathematics',
+  'maths': 'mathematics',
+  'game-theory': 'mathematics',
+  'topology': 'mathematics',
+  'probability': 'mathematics',
+
+  // law-governance variations
+  'law-governance': 'law-governance',
+  'law': 'law-governance',
+  'legal': 'law-governance',
+  'regulatory': 'law-governance',
+  'contract-theory': 'law-governance',
+  'governance': 'law-governance',
+
+  // anthropology-history variations
+  'anthropology-history': 'anthropology-history',
+  'anthropology': 'anthropology-history',
+  'history': 'anthropology-history',
+  'historical': 'anthropology-history',
+  'cultural': 'anthropology-history',
+
+  // philosophy-ethics variations
+  'philosophy-ethics': 'philosophy-ethics',
+  'philosophy': 'philosophy-ethics',
+  'ethics': 'philosophy-ethics',
+  'moral': 'philosophy-ethics',
+  'decision-theory': 'philosophy-ethics',
 
   // other variations
   'other': 'other',

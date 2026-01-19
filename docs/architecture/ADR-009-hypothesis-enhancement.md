@@ -1,7 +1,8 @@
 # ADR-009: Hypothesis Generation Enhancement
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-01-19
+**Implemented**: 2026-01-19
 
 ---
 

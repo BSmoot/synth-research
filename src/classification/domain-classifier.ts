@@ -93,6 +93,30 @@ const DOMAIN_KEYWORDS: Record<DomainTag, { keywords: string[]; weight: number }[
     { keywords: ['algorithm', 'server', 'cloud'], weight: 0.25 },
     { keywords: ['api', 'infrastructure', 'distributed'], weight: 0.25 },
   ],
+  'mathematics': [
+    { keywords: ['mathematical', 'mathematics', 'theorem'], weight: 0.4 },
+    { keywords: ['game theory', 'topology', 'probability'], weight: 0.35 },
+    { keywords: ['optimization', 'category theory', 'proof'], weight: 0.35 },
+    { keywords: ['algebra', 'calculus', 'statistics'], weight: 0.3 },
+  ],
+  'law-governance': [
+    { keywords: ['law', 'legal', 'regulation'], weight: 0.4 },
+    { keywords: ['governance', 'policy', 'legislative'], weight: 0.35 },
+    { keywords: ['contract', 'constitutional', 'judicial'], weight: 0.35 },
+    { keywords: ['compliance', 'regulatory', 'statute'], weight: 0.3 },
+  ],
+  'anthropology-history': [
+    { keywords: ['anthropology', 'anthropological', 'ethnography'], weight: 0.4 },
+    { keywords: ['history', 'historical', 'archaeology'], weight: 0.35 },
+    { keywords: ['culture', 'civilization', 'ancient'], weight: 0.3 },
+    { keywords: ['society', 'tradition', 'heritage'], weight: 0.25 },
+  ],
+  'philosophy-ethics': [
+    { keywords: ['philosophy', 'philosophical', 'metaphysics'], weight: 0.4 },
+    { keywords: ['ethics', 'ethical', 'moral'], weight: 0.4 },
+    { keywords: ['epistemology', 'ontology', 'logic'], weight: 0.35 },
+    { keywords: ['decision theory', 'value', 'reasoning'], weight: 0.3 },
+  ],
   other: [{ keywords: [], weight: 0 }],
 };
 

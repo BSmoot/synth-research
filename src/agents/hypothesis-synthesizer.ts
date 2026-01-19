@@ -82,6 +82,7 @@ For each hypothesis, provide:
 4. Confidence: high, medium, or low
 5. Citations: At least one supporting each domain
 6. Suggested experiment (optional): How to test this
+7. Suggested research (optional): Pre-experiment literature/data gathering
 
 QUALITY GUIDELINES:
 - Be SPECIFIC: Not "ML could help" but "attention mechanisms could model binding specificity"
@@ -114,7 +115,29 @@ Respond with ONLY valid JSON matching this structure:
       },
       "confidence": "high|medium|low",
       "citations": [...],
-      "suggestedExperiment": {...},
+      "suggestedExperiment": {
+        "title": "...",
+        "objective": "...",
+        "methodology": "...",
+        "expectedOutcome": "...",
+        "requirements": {
+          "dataSources": ["dataset1", "dataset2"],
+          "expertise": ["ML", "Biology"],
+          "infrastructure": ["GPU cluster"],
+          "dependencies": ["existing tool"],
+          "risks": ["data quality"]
+        },
+        "successCriteria": ["criterion1"]
+      },
+      "suggestedResearch": [
+        {
+          "type": "literature-review",
+          "scope": "Review existing approaches to X",
+          "questions": ["Q1", "Q2"],
+          "sources": ["journal1", "database2"],
+          "estimatedEffort": "moderate"
+        }
+      ],
       "generatedAt": "ISO date",
       "status": "raw"
     }
@@ -193,6 +216,7 @@ Remember to output ONLY valid JSON.`;
       connection: this.normalizeConnection(h.connection),
       citations: this.normalizeCitations(h.citations),
       suggestedExperiment: this.normalizeExperiment(h.suggestedExperiment),
+      suggestedResearch: this.normalizeResearchSuggestions(h.suggestedResearch),
     };
   }
 
@@ -333,7 +357,7 @@ Remember to output ONLY valid JSON.`;
       objective,
       methodology,
       expectedOutcome,
-      resourceEstimate: this.normalizeResourceEstimate(e.resourceEstimate, e),
+      requirements: this.normalizeRequirements(e.requirements),
       successCriteria,
     };
   }
@@ -346,48 +370,101 @@ Remember to output ONLY valid JSON.`;
     return firstClause.substring(0, 57) + '...';
   }
 
-  private normalizeResourceEstimate(
-    res: unknown,
-    experiment?: Record<string, unknown>
-  ): Record<string, unknown> {
-    // Try to parse timeline from experiment if resourceEstimate not provided
-    let timeMonths = 6;
-    if (res && typeof res === 'object') {
-      const r = res as Record<string, unknown>;
-      if (typeof r.timeMonths === 'number') {
-        timeMonths = r.timeMonths;
-      }
-    } else if (experiment && typeof experiment.timeline === 'string') {
-      timeMonths = this.parseTimelineToMonths(experiment.timeline);
-    }
-
-    if (res && typeof res === 'object') {
-      const r = res as Record<string, unknown>;
+  private normalizeRequirements(req: unknown): Record<string, unknown> {
+    if (req && typeof req === 'object') {
+      const r = req as Record<string, unknown>;
       return {
-        timeMonths,
-        budgetUSD: r.budgetUSD || '$100K-$500K',
+        dataSources: Array.isArray(r.dataSources) ? r.dataSources : ['TBD'],
         expertise: Array.isArray(r.expertise) ? r.expertise : ['Research'],
+        infrastructure: Array.isArray(r.infrastructure) ? r.infrastructure : ['TBD'],
+        dependencies: Array.isArray(r.dependencies) ? r.dependencies : [],
+        risks: Array.isArray(r.risks) ? r.risks : ['TBD'],
       };
     }
     return {
-      timeMonths,
-      budgetUSD: '$100K-$500K',
+      dataSources: ['TBD'],
       expertise: ['Research'],
+      infrastructure: ['TBD'],
+      dependencies: [],
+      risks: ['TBD'],
     };
   }
 
-  private parseTimelineToMonths(timeline: string): number {
-    // Parse strings like "6 months", "12 months", "18 months"
-    const match = timeline.match(/(\d+)\s*months?/i);
-    if (match) {
-      return parseInt(match[1], 10);
+  private normalizeResearchSuggestion(suggestion: unknown): Record<string, unknown> | undefined {
+    if (!suggestion || typeof suggestion !== 'object') return undefined;
+    const s = suggestion as Record<string, unknown>;
+
+    // Handle type field variations
+    const typeValue = s.type || s.researchType || s.kind || s.category || 'literature-review';
+    let type = this.normalizeResearchType(String(typeValue));
+
+    // Handle scope
+    const scope = typeof s.scope === 'string' ? s.scope : 'TBD';
+
+    // Handle questions - convert string to array if needed
+    let questions: string[] = [];
+    if (Array.isArray(s.questions)) {
+      questions = s.questions;
+    } else if (typeof s.questions === 'string') {
+      questions = s.questions.split(/[?;.]+/).map(q => q.trim()).filter(q => q.length > 0);
+      if (questions.length > 0 && !questions[questions.length - 1].endsWith('?')) {
+        questions = questions.map(q => q + '?');
+      }
     }
-    // Try parsing year-based strings like "1 year", "2 years"
-    const yearMatch = timeline.match(/(\d+)\s*years?/i);
-    if (yearMatch) {
-      return parseInt(yearMatch[1], 10) * 12;
+
+    // Handle sources - convert string to array if needed
+    let sources: string[] = [];
+    if (Array.isArray(s.sources)) {
+      sources = s.sources;
+    } else if (typeof s.sources === 'string') {
+      sources = s.sources.split(',').map(src => src.trim()).filter(src => src.length > 0);
     }
-    return 6; // default
+
+    // Handle estimatedEffort field variations
+    const effortValue = s.estimatedEffort || s.effort || s.timeRequired || s.duration || 'moderate';
+
+    return {
+      type,
+      scope,
+      questions,
+      sources,
+      estimatedEffort: effortValue,
+    };
+  }
+
+  private normalizeResearchType(type: string): string {
+    const typeMap: Record<string, string> = {
+      'lit review': 'literature-review',
+      'literature review': 'literature-review',
+      'data gathering': 'data-gathering',
+      'data collection': 'data-gathering',
+      'expert consultation': 'expert-consultation',
+      'consult experts': 'expert-consultation',
+      'preliminary modeling': 'preliminary-modeling',
+      'initial modeling': 'preliminary-modeling',
+    };
+    const lower = type.toLowerCase();
+    return typeMap[lower] || type;
+  }
+
+  private normalizeResearchSuggestions(suggestions: unknown): Record<string, unknown>[] | undefined {
+    if (!suggestions) return undefined;
+
+    if (!Array.isArray(suggestions)) {
+      const normalized = this.normalizeResearchSuggestion(suggestions);
+      return normalized ? [normalized] : undefined;
+    }
+
+    // Handle empty array - return empty array instead of undefined
+    if (suggestions.length === 0) {
+      return [];
+    }
+
+    const result = suggestions
+      .map(s => this.normalizeResearchSuggestion(s))
+      .filter((s): s is Record<string, unknown> => s !== undefined);
+
+    return result.length > 0 ? result : [];
   }
 
   private normalizeSource(

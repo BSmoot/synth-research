@@ -158,8 +158,12 @@ describe('Domain Metadata', () => {
     expect(SUPPORTED_DOMAINS).toContain('healthcare-medicine');
     expect(SUPPORTED_DOMAINS).toContain('cognitive-science');
     expect(SUPPORTED_DOMAINS).toContain('information-systems');
+    expect(SUPPORTED_DOMAINS).toContain('mathematics');
+    expect(SUPPORTED_DOMAINS).toContain('law-governance');
+    expect(SUPPORTED_DOMAINS).toContain('anthropology-history');
+    expect(SUPPORTED_DOMAINS).toContain('philosophy-ethics');
     expect(SUPPORTED_DOMAINS).toContain('other');
-    expect(SUPPORTED_DOMAINS).toHaveLength(11);
+    expect(SUPPORTED_DOMAINS).toHaveLength(15);
   });
 
   it('should have metadata for each domain', () => {

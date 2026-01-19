@@ -208,12 +208,25 @@ interface ResultsType {
     citations: Array<{ title: string; type: string }>;
     suggestedExperiment?: {
       title: string;
+      objective: string;
       methodology: string;
-      resourceEstimate: {
-        timeMonths: number;
-        budgetUSD: string;
+      expectedOutcome: string;
+      requirements: {
+        dataSources: string[];
+        expertise: string[];
+        infrastructure: string[];
+        dependencies: string[];
+        risks: string[];
       };
+      successCriteria: string[];
     };
+    suggestedResearch?: Array<{
+      type: string;
+      scope: string;
+      questions: string[];
+      sources: string[];
+      estimatedEffort: string;
+    }>;
   }>;
   metadata: {
     totalGenerated: number;
@@ -321,12 +334,59 @@ function formatResults(result: ResultsType): string {
       lines.push('');
     }
 
+    // Suggested Research (preliminary investigation)
+    if (hypothesis.suggestedResearch && hypothesis.suggestedResearch.length > 0) {
+      lines.push('Suggested Research:');
+      for (const research of hypothesis.suggestedResearch) {
+        lines.push(`  Type: ${research.type}`);
+        lines.push(`  Scope: ${research.scope}`);
+        lines.push(`  Effort: ${research.estimatedEffort}`);
+        if (research.questions.length > 0) {
+          lines.push('  Questions:');
+          for (const q of research.questions) {
+            lines.push(`    - ${q}`);
+          }
+        }
+        if (research.sources.length > 0) {
+          lines.push('  Sources:');
+          for (const s of research.sources) {
+            lines.push(`    - ${s}`);
+          }
+        }
+        lines.push('');
+      }
+    }
+
+    // Suggested Experiment (full-scale testing)
     if (hypothesis.suggestedExperiment) {
       lines.push('Suggested Experiment:');
-      lines.push(`  ${hypothesis.suggestedExperiment.title}`);
+      lines.push(`  Title: ${hypothesis.suggestedExperiment.title}`);
+      lines.push(`  Objective: ${hypothesis.suggestedExperiment.objective}`);
       lines.push(`  Methodology: ${hypothesis.suggestedExperiment.methodology}`);
-      lines.push(`  Timeline: ${hypothesis.suggestedExperiment.resourceEstimate.timeMonths} months`);
-      lines.push(`  Budget: ${hypothesis.suggestedExperiment.resourceEstimate.budgetUSD}`);
+      lines.push(`  Expected Outcome: ${hypothesis.suggestedExperiment.expectedOutcome}`);
+      lines.push('  Requirements:');
+      const req = hypothesis.suggestedExperiment.requirements;
+      if (req.dataSources.length > 0) {
+        lines.push(`    Data Sources: ${req.dataSources.join(', ')}`);
+      }
+      if (req.expertise.length > 0) {
+        lines.push(`    Expertise: ${req.expertise.join(', ')}`);
+      }
+      if (req.infrastructure.length > 0) {
+        lines.push(`    Infrastructure: ${req.infrastructure.join(', ')}`);
+      }
+      if (req.dependencies.length > 0) {
+        lines.push(`    Dependencies: ${req.dependencies.join(', ')}`);
+      }
+      if (req.risks.length > 0) {
+        lines.push(`    Risks: ${req.risks.join(', ')}`);
+      }
+      if (hypothesis.suggestedExperiment.successCriteria.length > 0) {
+        lines.push('  Success Criteria:');
+        for (const criterion of hypothesis.suggestedExperiment.successCriteria) {
+          lines.push(`    - ${criterion}`);
+        }
+      }
       lines.push('');
     }
 

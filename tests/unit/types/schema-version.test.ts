@@ -25,8 +25,8 @@ describe('Schema Versioning', () => {
       expect(semverPattern.test(SCHEMA_VERSION)).toBe(true);
     });
 
-    it('should equal "1.1.0" as specified in ADR-008', () => {
-      expect(SCHEMA_VERSION).toBe('1.1.0');
+    it('should equal "1.2.0" as specified in ADR-009', () => {
+      expect(SCHEMA_VERSION).toBe('1.2.0');
     });
   });
 

@@ -242,7 +242,7 @@ describe('DomainAnalystAgent', () => {
       ['econ', 'economics-finance'],
       ['social', 'social-systems'],
       ['sociology', 'social-systems'],
-      ['governance', 'social-systems'],
+      ['governance', 'law-governance'],  // Migrated from social-systems per ADR-009
       ['physics', 'physics-engineering'],
       ['engineering', 'physics-engineering'],
       ['climate', 'climate-environment'],
