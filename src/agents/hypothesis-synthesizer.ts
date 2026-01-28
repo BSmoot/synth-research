@@ -42,7 +42,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   name: 'hypothesis-synthesizer',
   model: 'claude-opus-4-20250514',
   maxTokens: 8192,
-  temperature: 0.8,
+  temperature: 0.9,
 };
 
 export class HypothesisSynthesizerAgent extends BaseAgent<
@@ -428,12 +428,19 @@ Remember to output ONLY valid JSON.`;
       scope,
       questions,
       sources,
-      estimatedEffort: effortValue,
+      estimatedEffort: this.normalizeResearchEffort(String(effortValue)),
     };
   }
 
   private normalizeResearchType(type: string): string {
     const typeMap: Record<string, string> = {
+      // Exact matches
+      'literature-review': 'literature-review',
+      'data-gathering': 'data-gathering',
+      'expert-consultation': 'expert-consultation',
+      'preliminary-modeling': 'preliminary-modeling',
+
+      // Existing variations
       'lit review': 'literature-review',
       'literature review': 'literature-review',
       'data gathering': 'data-gathering',
@@ -442,9 +449,65 @@ Remember to output ONLY valid JSON.`;
       'consult experts': 'expert-consultation',
       'preliminary modeling': 'preliminary-modeling',
       'initial modeling': 'preliminary-modeling',
+
+      // LLM creative variations
+      'case-study-analysis': 'literature-review',
+      'case study analysis': 'literature-review',
+      'case-study': 'literature-review',
+      'strategic-design': 'preliminary-modeling',
+      'strategic design': 'preliminary-modeling',
+      'analysis': 'literature-review',
+      'survey': 'literature-review',
+      'review': 'literature-review',
+      'modeling': 'preliminary-modeling',
+      'simulation': 'preliminary-modeling',
+      'design': 'preliminary-modeling',
+      'interviews': 'expert-consultation',
+      'consultation': 'expert-consultation',
+      'data-analysis': 'data-gathering',
+      'collect': 'data-gathering',
     };
-    const lower = type.toLowerCase();
-    return typeMap[lower] || type;
+
+    const lower = type.toLowerCase().trim();
+    if (lower in typeMap) return typeMap[lower];
+
+    // Partial match fallback
+    for (const [alias, canonical] of Object.entries(typeMap)) {
+      if (lower.includes(alias) || alias.includes(lower)) {
+        return canonical;
+      }
+    }
+
+    return 'literature-review'; // Always return valid value
+  }
+
+  private normalizeResearchEffort(effort: string): string {
+    const effortMap: Record<string, string> = {
+      // Exact matches
+      'minimal': 'minimal',
+      'moderate': 'moderate',
+      'substantial': 'substantial',
+
+      // LLM variations (low/medium/high)
+      'low': 'minimal',
+      'medium': 'moderate',
+      'high': 'substantial',
+
+      // Alternative phrasings
+      'small': 'minimal',
+      'light': 'minimal',
+      'minor': 'minimal',
+      'average': 'moderate',
+      'significant': 'substantial',
+      'large': 'substantial',
+      'major': 'substantial',
+      'extensive': 'substantial',
+    };
+
+    const lower = effort.toLowerCase().trim();
+    if (lower in effortMap) return effortMap[lower];
+
+    return 'moderate'; // Default fallback
   }
 
   private normalizeResearchSuggestions(suggestions: unknown): Record<string, unknown>[] | undefined {

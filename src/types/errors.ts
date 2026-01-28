@@ -34,3 +34,23 @@ export class CircuitOpenError extends Error {
     this.circuitName = circuitName;
   }
 }
+
+/**
+ * Error thrown during hypothesis integration phase.
+ * Used to distinguish integration errors from other pipeline failures.
+ */
+export class IntegrationError extends Error {
+  readonly phase: 'clustering' | 'synthesis' | 'dependency' | 'coverage';
+  readonly context: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    phase: IntegrationError['phase'],
+    context: Record<string, unknown> = {}
+  ) {
+    super(message);
+    this.name = 'IntegrationError';
+    this.phase = phase;
+    this.context = context;
+  }
+}

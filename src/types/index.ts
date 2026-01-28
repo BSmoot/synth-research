@@ -8,6 +8,7 @@ export * from './hypothesis.js';
 export * from './tokens.js';
 export * from './trace.js';
 export * from './errors.js';
+export * from './integration.js';
 
 // ============================================================================
 // User Query
@@ -28,6 +29,7 @@ export type UserQuery = z.infer<typeof UserQuerySchema>;
 // ============================================================================
 
 import { RankedHypothesisSchema } from './hypothesis.js';
+import { IntegrationResultSchema } from './integration.js';
 
 export const StageResultSchema = z.object({
   stage: z.string(),
@@ -60,6 +62,8 @@ export const SynthesisOutputSchema = z.object({
       usd: z.number(),
     }).optional(),
   }),
+
+  integration: IntegrationResultSchema.optional(),
 
   warnings: z.array(z.string()),
 });

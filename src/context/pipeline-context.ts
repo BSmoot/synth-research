@@ -12,6 +12,10 @@ import type {
   ScoredHypothesis,
   StageResult,
   DomainTag,
+  HypothesisCluster,
+  IntegratedTheory,
+  HypothesisDependency,
+  QueryCoverage,
 } from '../types/index.js';
 import type {
   TokenUsage,
@@ -53,6 +57,10 @@ export class PipelineContext implements TokenTracker, TraceCollector {
   private _warnings: string[] = [];
   private _tokenUsage: AgentTokenUsage[] = [];
   private _traces: TraceEntry[] = [];
+  private _clusters: HypothesisCluster[] = [];
+  private _integratedTheories: IntegratedTheory[] = [];
+  private _dependencies: HypothesisDependency[] = [];
+  private _queryCoverage: QueryCoverage | null = null;
 
   constructor(query: UserQuery, domain: DomainTag) {
     this.traceId = randomUUID();
@@ -88,6 +96,22 @@ export class PipelineContext implements TokenTracker, TraceCollector {
 
   addWarning(warning: string): void {
     this._warnings.push(warning);
+  }
+
+  setClusters(clusters: HypothesisCluster[]): void {
+    this._clusters = clusters;
+  }
+
+  setIntegratedTheories(theories: IntegratedTheory[]): void {
+    this._integratedTheories = theories;
+  }
+
+  setDependencies(dependencies: HypothesisDependency[]): void {
+    this._dependencies = dependencies;
+  }
+
+  setQueryCoverage(coverage: QueryCoverage): void {
+    this._queryCoverage = coverage;
   }
 
   // ============================================================================
@@ -185,6 +209,31 @@ export class PipelineContext implements TokenTracker, TraceCollector {
 
   get traces(): TraceEntry[] {
     return this._traces;
+  }
+
+  get clusters(): HypothesisCluster[] {
+    return this._clusters;
+  }
+
+  get integratedTheories(): IntegratedTheory[] {
+    return this._integratedTheories;
+  }
+
+  get dependencies(): HypothesisDependency[] {
+    return this._dependencies;
+  }
+
+  get queryCoverage(): QueryCoverage | null {
+    return this._queryCoverage;
+  }
+
+  hasIntegrationResults(): boolean {
+    return (
+      this._clusters.length > 0 ||
+      this._integratedTheories.length > 0 ||
+      this._dependencies.length > 0 ||
+      this._queryCoverage !== null
+    );
   }
 
   calculateCost(): CostEstimate {

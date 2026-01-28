@@ -517,7 +517,7 @@ export function normalizeDomainsInObject<T>(obj: T, fallback: DomainTag): T {
   for (const [key, value] of Object.entries(result)) {
     if (key === 'domain' || key === 'sourceDomain' || key === 'targetDomain') {
       result[key] = normalizeDomain(value, fallback);
-    } else if (key === 'targetDomains' && Array.isArray(value)) {
+    } else if ((key === 'targetDomains' || key === 'sourceDomains') && Array.isArray(value)) {
       result[key] = value.map((d) => normalizeDomain(d, fallback));
     } else if (typeof value === 'object' && value !== null) {
       result[key] = normalizeDomainsInObject(value, fallback);

@@ -15,3 +15,4 @@ export {
   type ChallengeRequest,
   type ChallengeResult,
 } from './hypothesis-challenger.js';
+export { HypothesisIntegratorAgent } from './hypothesis-integrator.js';

@@ -10,6 +10,7 @@ import {
   CrossPollinatorAgent,
   HypothesisSynthesizerAgent,
   HypothesisChallengerAgent,
+  HypothesisIntegratorAgent,
 } from '../agents/index.js';
 import {
   UserQuery,
@@ -60,6 +61,7 @@ export class SynthesisOrchestrator {
   private readonly crossPollinator: CrossPollinatorAgent;
   private readonly hypothesisSynthesizer: HypothesisSynthesizerAgent;
   private readonly hypothesisChallenger: HypothesisChallengerAgent;
+  private readonly hypothesisIntegrator: HypothesisIntegratorAgent;
 
   constructor(config: OrchestratorConfig = {}) {
     this.config = {
@@ -105,6 +107,7 @@ export class SynthesisOrchestrator {
     this.crossPollinator = new CrossPollinatorAgent(this.client);
     this.hypothesisSynthesizer = new HypothesisSynthesizerAgent(this.client);
     this.hypothesisChallenger = new HypothesisChallengerAgent(this.client);
+    this.hypothesisIntegrator = new HypothesisIntegratorAgent(this.client);
   }
 
   /**
@@ -135,6 +138,8 @@ export class SynthesisOrchestrator {
     this.hypothesisSynthesizer.setTraceCollector(context);
     this.hypothesisChallenger.setTracker(context);
     this.hypothesisChallenger.setTraceCollector(context);
+    this.hypothesisIntegrator.setTracker(context);
+    this.hypothesisIntegrator.setTraceCollector(context);
 
     try {
       // Stage 1: Domain Analysis
@@ -152,6 +157,10 @@ export class SynthesisOrchestrator {
       // Stage 4: Challenge & Score
       this.checkBudget(context);
       await this.runHypothesisChallenge(context);
+
+      // Stage 5: Integration (non-fatal)
+      this.checkBudget(context);
+      await this.runHypothesisIntegration(context);
 
       // Write traces if enabled
       if (this.config.traceEnabled) {
@@ -374,6 +383,69 @@ export class SynthesisOrchestrator {
   }
 
   /**
+   * Stage 5: Hypothesis Integration (non-fatal)
+   */
+  private async runHypothesisIntegration(context: PipelineContext): Promise<void> {
+    const startTime = Date.now();
+    context.log('Stage 5: Hypothesis Integration');
+    this.reportProgress('hypothesis-integration', 'Integrating validated hypotheses...');
+
+    if (context.scoredHypotheses.length === 0) {
+      context.addWarning('No validated hypotheses available for integration');
+      context.addStage({
+        stage: 'hypothesis-integration',
+        status: 'partial',
+        durationMs: Date.now() - startTime,
+        message: 'Skipped - no validated hypotheses',
+      });
+      return;
+    }
+
+    try {
+      const result = await this.withRetry(
+        (signal) =>
+          this.hypothesisIntegrator.execute(
+            {
+              hypotheses: context.scoredHypotheses,
+              query: context.query.text,
+              domain: context.domain,
+            },
+            signal
+          ),
+        this.config.maxRetries,
+        'hypothesis-integrator'
+      );
+
+      // Store integration results in context
+      context.setClusters(result.clusters);
+      context.setIntegratedTheories(result.integratedTheories);
+      context.setDependencies(result.dependencies);
+      context.setQueryCoverage(result.queryCoverage);
+
+      context.addStage({
+        stage: 'hypothesis-integration',
+        status: 'success',
+        durationMs: Date.now() - startTime,
+        message: `Clusters: ${result.clusters.length}, Theories: ${result.integratedTheories.length}, Dependencies: ${result.dependencies.length}`,
+      });
+
+      context.log(
+        `  Created ${result.clusters.length} clusters, ${result.integratedTheories.length} theories, ${result.dependencies.length} dependencies`
+      );
+    } catch (error) {
+      // Integration errors are non-fatal
+      context.addWarning(`Hypothesis integration failed: ${error}`);
+      context.addStage({
+        stage: 'hypothesis-integration',
+        status: 'error',
+        durationMs: Date.now() - startTime,
+        message: String(error),
+      });
+      context.log(`  Integration failed (non-fatal): ${error}`);
+    }
+  }
+
+  /**
    * Build the final output
    */
   private buildOutput(context: PipelineContext): SynthesisOutput {
@@ -393,6 +465,27 @@ export class SynthesisOrchestrator {
     // Get token usage and cost
     const tokenUsage = context.tokenUsage;
     const costEstimate = context.calculateCost();
+
+    // Build integration result if available
+    const integration = context.hasIntegrationResults()
+      ? {
+          clusters: context.clusters,
+          integratedTheories: context.integratedTheories,
+          dependencies: context.dependencies,
+          queryCoverage: context.queryCoverage!,
+          metadata: {
+            totalHypotheses: context.scoredHypotheses.length,
+            totalClusters: context.clusters.length,
+            totalTheories: context.integratedTheories.length,
+            totalDependencies: context.dependencies.length,
+            averageCoherence:
+              context.clusters.length > 0
+                ? context.clusters.reduce((sum, c) => sum + c.coherenceScore, 0) /
+                  context.clusters.length
+                : 0,
+          },
+        }
+      : undefined;
 
     return {
       traceId: context.traceId,
@@ -416,6 +509,8 @@ export class SynthesisOrchestrator {
           usd: costEstimate.usd,
         },
       },
+
+      integration,
 
       warnings: context.warnings,
     };

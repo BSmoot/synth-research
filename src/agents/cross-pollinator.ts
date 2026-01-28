@@ -27,7 +27,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   name: 'cross-pollinator',
   model: 'claude-opus-4-20250514',
   maxTokens: 8192,
-  temperature: 0.8,
+  temperature: 0.9,
 };
 
 export class CrossPollinatorAgent extends BaseAgent<

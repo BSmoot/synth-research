@@ -98,16 +98,13 @@ const DEFAULT_CONFIG: AgentConfig = {
   name: 'hypothesis-challenger',
   model: 'claude-opus-4-20250514',
   maxTokens: 8192,
-  temperature: 0.5,
+  temperature: 0.6,
 };
 
 export class HypothesisChallengerAgent extends BaseAgent<
   ChallengeRequest,
   ChallengeResult
 > {
-  // Store current hypotheses for parseResponse to access
-  private currentHypotheses: Hypothesis[] = [];
-
   constructor(client: Anthropic, config: Partial<AgentConfig> = {}) {
     super(client, { ...DEFAULT_CONFIG, ...config });
   }
@@ -156,15 +153,12 @@ export class HypothesisChallengerAgent extends BaseAgent<
   }
 
   private async evaluateSingle(hypotheses: Hypothesis[], signal?: AbortSignal): Promise<ChallengeResult> {
-    // Store hypotheses for parseResponse to access
-    this.currentHypotheses = hypotheses;
-
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt({ hypotheses });
 
     // Use free-text JSON for complex schemas (tool_use times out with deeply nested schemas)
     const response = await this.callLLM(systemPrompt, userPrompt, { signal });
-    return this.parseResponse(response);
+    return this.parseResponse(response, hypotheses);
   }
 
   private async evaluateBatch(hypotheses: Hypothesis[], signal?: AbortSignal): Promise<BatchResult> {
@@ -360,13 +354,13 @@ Remember:
 Output ONLY valid JSON.`;
   }
 
-  protected parseResponse(response: string): ChallengeResult {
+  protected parseResponse(response: string, hypotheses: Hypothesis[] = []): ChallengeResult {
     const json = this.extractJSON(response);
     const parsed = JSON.parse(json);
 
     // Create lookup map for original hypotheses
     const hypothesisMap = new Map<string, Hypothesis>();
-    for (const h of this.currentHypotheses) {
+    for (const h of hypotheses) {
       hypothesisMap.set(h.id, h);
     }
 

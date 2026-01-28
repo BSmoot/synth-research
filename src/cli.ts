@@ -14,10 +14,11 @@ import { SynthesisOrchestrator } from './orchestrator/index.js';
 import { SUPPORTED_DOMAINS, DOMAIN_METADATA, DomainTag } from './types/index.js';
 
 const STAGE_LABELS: Record<string, string> = {
-  'domain-analysis': 'Stage 1/4: Domain Analysis',
-  'cross-pollination': 'Stage 2/4: Cross-Pollination',
-  'hypothesis-synthesis': 'Stage 3/4: Hypothesis Synthesis',
-  'hypothesis-challenge': 'Stage 4/4: Hypothesis Challenge',
+  'domain-analysis': 'Stage 1/5: Domain Analysis',
+  'cross-pollination': 'Stage 2/5: Cross-Pollination',
+  'hypothesis-synthesis': 'Stage 3/5: Hypothesis Synthesis',
+  'hypothesis-challenge': 'Stage 4/5: Hypothesis Challenge',
+  'hypothesis-integration': 'Stage 5/5: Hypothesis Integration',
 };
 
 // ============================================================================
@@ -243,7 +244,160 @@ interface ResultsType {
       usd: number;
     };
   };
+  integration?: {
+    clusters: Array<{
+      id: string;
+      name: string;
+      hypothesisIds: string[];
+      criterion: string;
+      coherenceScore: number;
+      summary: string;
+    }>;
+    integratedTheories: Array<{
+      id: string;
+      title: string;
+      description: string;
+      hypothesisIds: string[];
+      sourceDomains: string[];
+      targetDomain: string;
+      unifiedMechanism: string;
+      syntheticPredictions: string[];
+      confidence: number;
+      suggestedValidation?: string;
+    }>;
+    dependencies: Array<{
+      id: string;
+      sourceHypothesisId: string;
+      targetHypothesisId: string;
+      type: string;
+      explanation: string;
+      strength: number;
+    }>;
+    queryCoverage: {
+      requirements: Array<{
+        id: string;
+        requirement: string;
+        type: string;
+        priority: string;
+      }>;
+      coverage: Array<{
+        requirementId: string;
+        hypothesisIds: string[];
+        coverageScore: number;
+        gaps: string[];
+      }>;
+      overallCoverage: number;
+      recommendations: string[];
+    };
+    metadata: {
+      totalHypotheses: number;
+      totalClusters: number;
+      totalTheories: number;
+      totalDependencies: number;
+      averageCoherence: number;
+    };
+  };
   warnings: string[];
+}
+
+function formatIntegrationResults(integration: ResultsType['integration']): string[] {
+  if (!integration) return [];
+
+  const lines: string[] = [];
+
+  lines.push('========================================');
+  lines.push('  INTEGRATION ANALYSIS');
+  lines.push('========================================\n');
+
+  // Clusters
+  if (integration.clusters.length > 0) {
+    lines.push(`HYPOTHESIS CLUSTERS (${integration.clusters.length}):`);
+    for (const cluster of integration.clusters) {
+      lines.push(`  ${cluster.name}`);
+      lines.push(`    Criterion: ${cluster.criterion}`);
+      lines.push(`    Coherence: ${cluster.coherenceScore.toFixed(2)}`);
+      lines.push(`    Hypotheses: ${cluster.hypothesisIds.join(', ')}`);
+      lines.push(`    Summary: ${cluster.summary}`);
+      lines.push('');
+    }
+  }
+
+  // Integrated Theories
+  if (integration.integratedTheories.length > 0) {
+    lines.push(`INTEGRATED THEORIES (${integration.integratedTheories.length}):`);
+    for (const theory of integration.integratedTheories) {
+      lines.push(`  ${theory.title}`);
+      lines.push(`    Description: ${theory.description}`);
+      lines.push(`    Source Domains: ${theory.sourceDomains.join(', ')}`);
+      lines.push(`    Target Domain: ${theory.targetDomain}`);
+      lines.push(`    Confidence: ${theory.confidence.toFixed(2)}`);
+      lines.push(`    Unified Mechanism: ${theory.unifiedMechanism}`);
+      lines.push('    Synthetic Predictions:');
+      for (const pred of theory.syntheticPredictions) {
+        lines.push(`      - ${pred}`);
+      }
+      if (theory.suggestedValidation) {
+        lines.push(`    Validation: ${theory.suggestedValidation}`);
+      }
+      lines.push('');
+    }
+  }
+
+  // Dependencies
+  if (integration.dependencies.length > 0) {
+    lines.push(`HYPOTHESIS DEPENDENCIES (${integration.dependencies.length}):`);
+    for (const dep of integration.dependencies) {
+      lines.push(`  ${dep.sourceHypothesisId} → ${dep.targetHypothesisId}`);
+      lines.push(`    Type: ${dep.type}`);
+      lines.push(`    Strength: ${dep.strength.toFixed(2)}`);
+      lines.push(`    Explanation: ${dep.explanation}`);
+      lines.push('');
+    }
+  }
+
+  // Query Coverage
+  lines.push(...formatQueryCoverage(integration.queryCoverage));
+
+  lines.push('----------------------------------------\n');
+
+  return lines;
+}
+
+function formatQueryCoverage(coverage: NonNullable<ResultsType['integration']>['queryCoverage']): string[] {
+  if (!coverage) return [];
+
+  const lines: string[] = [];
+
+  lines.push(`QUERY COVERAGE (${(coverage.overallCoverage * 100).toFixed(0)}%):`);
+
+  if (coverage.requirements.length > 0) {
+    lines.push('  Requirements:');
+    for (const req of coverage.requirements) {
+      const cov = coverage.coverage.find((c: { requirementId: string; hypothesisIds: string[]; coverageScore: number; gaps: string[] }) => c.requirementId === req.id);
+      const score = cov ? (cov.coverageScore * 100).toFixed(0) : '0';
+      lines.push(`    [${score}%] ${req.requirement} (${req.type}, ${req.priority})`);
+      if (cov && cov.hypothesisIds.length > 0) {
+        lines.push(`      Addressed by: ${cov.hypothesisIds.join(', ')}`);
+      }
+      if (cov && cov.gaps.length > 0) {
+        lines.push('      Gaps:');
+        for (const gap of cov.gaps) {
+          lines.push(`        - ${gap}`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  if (coverage.recommendations.length > 0) {
+    lines.push('  Recommendations:');
+    for (const rec of coverage.recommendations) {
+      lines.push(`    - ${rec}`);
+    }
+    lines.push('');
+  }
+
+  return lines;
 }
 
 function formatResults(result: ResultsType): string {
@@ -292,6 +446,11 @@ function formatResults(result: ResultsType): string {
       lines.push(`  ⚠ ${warning}`);
     }
     lines.push('');
+  }
+
+  // Integration Analysis (if available)
+  if (result.integration) {
+    lines.push(...formatIntegrationResults(result.integration));
   }
 
   // Hypotheses

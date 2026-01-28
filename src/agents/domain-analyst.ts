@@ -23,7 +23,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   name: 'domain-analyst',
   model: 'claude-sonnet-4-20250514',
   maxTokens: 4096,
-  temperature: 0.7,
+  temperature: 0.8,
 };
 
 export class DomainAnalystAgent extends BaseAgent<
